@@ -1,6 +1,6 @@
 # NodeFetch
 
-A Node.js clone of neofetch/fastfetch with Android support. This application displays system information along with custom ASCII art.
+A Node.js clone of neofetch/fastfetch. This application displays system information along with custom ASCII art.
 
 ## Features
 
@@ -49,28 +49,6 @@ node index.js
 
 # Or use npm
 npm start
-```
-
-### Android Usage (via Termux)
-
-1. Install Termux from Google Play Store or F-Droid
-2. Open Termux and install Node.js:
-```bash
-pkg update
-pkg install nodejs
-```
-
-3. Clone the repository and install dependencies:
-```bash
-pkg install git
-git clone https://github.com/SterTheStar/nodefetch.git
-cd nodefetch
-npm install
-```
-
-4. Run the application:
-```bash
-node index.js
 ```
 
 ## Customization
