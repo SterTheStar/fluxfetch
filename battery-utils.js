@@ -161,19 +161,37 @@ class BatteryUtils {
 
   static async getAndroidBatteryInfo() {
     try {
-      // No Android, usamos o módulo android-utils existente
-      const androidUtils = require('./android-utils');
-      const androidInfo = await androidUtils.getAndroidInfo();
+      const { exec } = require('child_process');
       
-      if (!androidInfo || !androidInfo.batteryLevel) {
+      // Função auxiliar para executar comandos
+      const execCommand = (command) => {
+        return new Promise((resolve, reject) => {
+          exec(command, (error, stdout, stderr) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve(stdout.trim());
+          });
+        });
+      };
+
+      // Obter informações da bateria
+      const batteryLevel = await execCommand('dumpsys battery | grep level | cut -d ":" -f2 || echo "N/A"');
+      const batteryStatus = await execCommand('dumpsys battery | grep status | cut -d ":" -f2 || echo "N/A"');
+      const batteryHealth = await execCommand('dumpsys battery | grep health | cut -d ":" -f2 || echo "N/A"');
+      const batteryTemp = await execCommand('dumpsys battery | grep temperature | cut -d ":" -f2 || echo "N/A"');
+      
+      if (batteryLevel === 'N/A') {
         return null;
       }
       
       return [{
         name: 'BAT0',
-        capacity: androidInfo.batteryLevel,
-        status: androidInfo.batteryStatus || 'Desconhecido',
-        timeRemaining: androidInfo.batteryTimeRemaining || 'Desconhecido'
+        capacity: `${batteryLevel.trim()}%`,
+        status: batteryStatus.trim(),
+        health: batteryHealth.trim(),
+        temperature: `${(parseInt(batteryTemp) / 10).toFixed(1)}°C`
       }];
     } catch (error) {
       console.error('Erro ao obter informações da bateria no Android:', error);

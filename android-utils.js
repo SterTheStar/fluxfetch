@@ -44,15 +44,6 @@ async function getAndroidInfo() {
     const buildId = await execCommand('getprop ro.build.id || echo "Desconhecido"');
     const buildFingerprint = await execCommand('getprop ro.build.fingerprint || echo "Desconhecido"');
     
-    // Informações de bateria (se disponível)
-    let batteryLevel = "Desconhecido";
-    try {
-      batteryLevel = await execCommand('dumpsys battery | grep level | cut -d ":" -f2 || echo "Desconhecido"');
-      batteryLevel = batteryLevel.trim() + "%";
-    } catch (e) {
-      // Ignora erros ao obter informações da bateria
-    }
-    
     // Informações de rede
     let wifiInfo = "Desconhecido";
     try {
@@ -70,7 +61,6 @@ async function getAndroidInfo() {
       sdkVersion,
       buildId,
       buildFingerprint,
-      batteryLevel,
       wifiInfo
     };
   } catch (error) {
@@ -85,7 +75,6 @@ async function getAndroidInfo() {
       sdkVersion: process.env.ANDROID_SDK_VERSION || 'Desconhecido',
       buildId: process.env.ANDROID_BUILD_ID || 'Desconhecido',
       buildFingerprint: 'Desconhecido',
-      batteryLevel: 'Desconhecido',
       wifiInfo: 'Desconhecido'
     };
   }

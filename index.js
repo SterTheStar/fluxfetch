@@ -284,7 +284,37 @@ async function getSystemInfo() {
     };
   } catch (error) {
     console.error('Error getting system information:', error);
-    return {};
+    return {
+      hostname: os.hostname(),
+      platform: 'Unknown',
+      distro: 'Unknown',
+      release: 'Unknown',
+      arch: os.arch(),
+      kernel: 'Unknown',
+      uptime: 'Unknown',
+      shell: 'Unknown',
+      terminal: 'Unknown',
+      terminalPath: 'Unknown',
+      cpu: {
+        model: 'Unknown',
+        cores: 'Unknown',
+        speed: 'Unknown'
+      },
+      gpu: 'Unknown',
+      memory: {
+        total: 'Unknown',
+        used: 'Unknown',
+        percentage: 'Unknown'
+      },
+      disk: {
+        total: 'Unknown',
+        used: 'Unknown',
+        percentage: 'Unknown'
+      },
+      resolution: 'Unknown',
+      battery: null,
+      ...additionalInfo
+    };
   }
 }
 
@@ -388,6 +418,18 @@ async function displaySystemInfo() {
   
   if (config.showInfo.disk) {
     infoLines.push(`${config.colors.labels(chalk.bold('Disk'))}: ${info.disk.used} / ${info.disk.total} (${info.disk.percentage})`);
+  }
+  
+  // Adicionar informações da bateria se disponíveis
+  if (config.showInfo.batteryLevel && info.battery) {
+    info.battery.forEach(bat => {
+      let batteryInfo = `${bat.capacity}`;
+      if (bat.status) batteryInfo += ` (${bat.status})`;
+      if (bat.timeRemaining && bat.timeRemaining !== 'Desconhecido') {
+        batteryInfo += ` - ${bat.timeRemaining}`;
+      }
+      infoLines.push(`${config.colors.labels(chalk.bold('Battery'))}: ${batteryInfo}`);
+    });
   }
   
   if (config.showInfo.resolution) {
