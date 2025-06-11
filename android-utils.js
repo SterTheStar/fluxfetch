@@ -92,9 +92,73 @@ async function getAndroidHardwareInfo() {
   try {
     // CPU info
     const cpuInfo = await execCommand('cat /proc/cpuinfo || echo "Desconhecido"');
-    const cpuModel = cpuInfo.split('\n')
-      .find(line => line.includes('model name') || line.includes('Processor'))
-      ?.split(':')[1]?.trim() || 'Desconhecido';
+    let cpuModel = 'Desconhecido';
+    let cpuHardware = 'Desconhecido';
+    let cpuRevision = 'Desconhecido';
+    
+    // Tentar obter informações detalhadas da CPU
+    try {
+      // Tentar obter hardware via getprop
+      cpuHardware = await execCommand('getprop ro.hardware || echo "Desconhecido"');
+      
+      // Tentar obter informações do processador
+      const processorInfo = await execCommand('getprop ro.board.platform || echo "Desconhecido"');
+      
+      // Tentar obter informações do chipset
+      const chipsetInfo = await execCommand('getprop ro.chipname || echo "Desconhecido"');
+      
+      // Tentar obter informações do modelo
+      const modelInfo = await execCommand('getprop ro.product.model || echo "Desconhecido"');
+      
+      // Tentar obter informações do fabricante
+      const manufacturerInfo = await execCommand('getprop ro.product.manufacturer || echo "Desconhecido"');
+      
+      // Processar informações da CPU
+      const cpuLines = cpuInfo.split('\n');
+      for (const line of cpuLines) {
+        if (line.includes('Hardware')) {
+          cpuHardware = line.split(':')[1]?.trim() || cpuHardware;
+        } else if (line.includes('model name') || line.includes('Processor')) {
+          cpuModel = line.split(':')[1]?.trim() || cpuModel;
+        } else if (line.includes('CPU revision')) {
+          cpuRevision = line.split(':')[1]?.trim() || cpuRevision;
+        }
+      }
+      
+      // Construir nome detalhado do processador
+      let detailedCpuName = '';
+      
+      // Primeiro tentar obter informações específicas do processador
+      if (processorInfo !== 'Desconhecido') {
+        if (processorInfo.toLowerCase().includes('snapdragon')) {
+          detailedCpuName = processorInfo;
+        } else if (chipsetInfo !== 'Desconhecido') {
+          detailedCpuName = chipsetInfo;
+        } else {
+          detailedCpuName = processorInfo;
+        }
+      } else if (chipsetInfo !== 'Desconhecido') {
+        detailedCpuName = chipsetInfo;
+      } else if (cpuHardware !== 'Desconhecido') {
+        detailedCpuName = cpuHardware;
+      } else {
+        detailedCpuName = cpuModel;
+      }
+      
+      // Adicionar fabricante apenas se não estiver já incluído no nome
+      if (manufacturerInfo !== 'Desconhecido' && !detailedCpuName.toLowerCase().includes(manufacturerInfo.toLowerCase())) {
+        detailedCpuName = manufacturerInfo + ' ' + detailedCpuName;
+      }
+      
+      // Adicionar informações de revisão se disponível
+      if (cpuRevision !== 'Desconhecido') {
+        detailedCpuName += ` (rev ${cpuRevision})`;
+      }
+      
+      cpuModel = detailedCpuName.trim();
+    } catch (error) {
+      console.error('Erro ao obter informações detalhadas da CPU:', error);
+    }
     
     // Número de cores
     const cpuCores = await execCommand('grep -c processor /proc/cpuinfo || echo "1"');
