@@ -1,6 +1,6 @@
 # NodeFetch
 
-A Node.js clone of neofetch/fastfetch. This application displays system information along with custom ASCII art.
+A Node.js clone of neofetch/fastfetch. This application displays system information along with custom ASCII art
 
 ## Features
 
