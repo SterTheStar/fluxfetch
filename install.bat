@@ -16,7 +16,7 @@ set "BINARY_NAME=nodefetch.exe"
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
 :: Copiar o executável
-copy "dist\nodefetch-windows-x64.exe" "%INSTALL_DIR%\%BINARY_NAME%"
+copy "nodefetch-windows-x64.exe" "%INSTALL_DIR%\%BINARY_NAME%"
 
 :: Adicionar ao PATH se não estiver
 setx PATH "%PATH%;%INSTALL_DIR%" /M

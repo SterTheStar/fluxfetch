@@ -11,7 +11,7 @@ INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="nodefetch"
 
 # Copiar o executável
-cp "dist/nodefetch-linux-x64" "$INSTALL_DIR/$BINARY_NAME"
+cp "nodefetch-linux-x64" "$INSTALL_DIR/$BINARY_NAME"
 
 # Configurar permissões
 chmod +x "$INSTALL_DIR/$BINARY_NAME"
