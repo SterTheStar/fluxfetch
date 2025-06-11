@@ -6,8 +6,85 @@ const chalk = require('chalk');
 const figlet = require('figlet');
 const fs = require('fs');
 const path = require('path');
+const { program } = require('commander');
 const config = require('./config');
 const androidUtils = require('./android-utils');
+const asciiLoader = require('./ascii-loader');
+const BatteryUtils = require('./battery-utils');
+const SystemUtils = require('./system-utils');
+
+// Configurar opções de linha de comando
+program
+  .option('--name <name>', 'Custom name to display')
+  .option('--system <system>', 'Force specific operating system')
+  .option('--list-systems', 'List all available systems')
+  .parse(process.argv);
+
+const options = program.opts();
+
+// Se a opção --list-systems for usada, listar sistemas e sair
+if (options.listSystems) {
+  console.log('Sistemas disponíveis:');
+  console.log(asciiLoader.listAvailableSystems().join('\n'));
+  process.exit(0);
+}
+
+// Função para obter resolução da tela
+async function getScreenResolution() {
+  try {
+    // Tentar obter informações do display
+    const displayInfo = await si.graphics();
+    
+    // Verificar diferentes propriedades que podem conter a resolução
+    if (displayInfo.displays && displayInfo.displays.length > 0) {
+      const display = displayInfo.displays[0];
+      
+      // Tentar diferentes propriedades que podem conter a resolução
+      if (display.resolutionX && display.resolutionY) {
+        return `${display.resolutionX}x${display.resolutionY}`;
+      }
+      if (display.currentResX && display.currentResY) {
+        return `${display.currentResX}x${display.currentResY}`;
+      }
+      if (display.resolution) {
+        return display.resolution;
+      }
+    }
+    
+    // Fallback: Tentar obter resolução usando o módulo os
+    if (process.platform === 'win32') {
+      // No Windows, podemos tentar usar o comando wmic
+      const { execSync } = require('child_process');
+      try {
+        const output = execSync('wmic path Win32_VideoController get CurrentHorizontalResolution,CurrentVerticalResolution').toString();
+        const match = output.match(/(\d+)\s+(\d+)/);
+        if (match) {
+          return `${match[1]}x${match[2]}`;
+        }
+      } catch (error) {
+        console.error('Erro ao obter resolução via wmic:', error);
+      }
+    } else if (process.platform === 'linux') {
+      // No Linux, podemos tentar usar xrandr
+      const { execSync } = require('child_process');
+      try {
+        const output = execSync('xrandr --current').toString();
+        const match = output.match(/(\d+)x(\d+)/);
+        if (match) {
+          return `${match[1]}x${match[2]}`;
+        }
+      } catch (error) {
+        console.error('Erro ao obter resolução via xrandr:', error);
+      }
+    }
+    
+    // Se não conseguir obter a resolução, retornar desconhecido
+    return 'Unknown';
+  } catch (error) {
+    console.error('Error getting screen resolution:', error);
+    return 'Unknown';
+  }
+}
 
 // Detectar se está rodando em ambiente Android
 const isAndroid = androidUtils.isAndroid;
@@ -23,6 +100,9 @@ async function getSystemInfo() {
     const disk = await si.fsSize();
     const net = await si.networkInterfaces();
     const system = await si.system();
+    
+    // Obter resolução da tela
+    const resolution = await getScreenResolution();
     
     // Calcular uso de memória
     const totalMem = (mem.total / 1024 / 1024 / 1024).toFixed(2);
@@ -42,22 +122,28 @@ async function getSystemInfo() {
         const androidHardwareInfo = await androidUtils.getAndroidHardwareInfo();
         
         androidInfo = {
-          device: detailedAndroidInfo.model || 'Dispositivo Android',
-          manufacturer: detailedAndroidInfo.manufacturer || 'Desconhecido',
-          sdk: detailedAndroidInfo.sdkVersion || 'Desconhecido',
-          build: detailedAndroidInfo.buildId || 'Desconhecido',
-          version: detailedAndroidInfo.androidVersion || 'Desconhecido',
-          batteryLevel: detailedAndroidInfo.batteryLevel || 'Desconhecido',
-          wifiInfo: detailedAndroidInfo.wifiInfo || 'Desconhecido',
-          cpuModel: androidHardwareInfo.cpu?.model || 'Desconhecido',
-          cpuCores: androidHardwareInfo.cpu?.cores || 'Desconhecido',
-          storageTotal: androidHardwareInfo.storage?.total || 'Desconhecido',
-          storageUsed: androidHardwareInfo.storage?.used || 'Desconhecido'
+          device: detailedAndroidInfo.model || 'Unknown',
+          manufacturer: detailedAndroidInfo.manufacturer || 'Unknown',
+          sdk: detailedAndroidInfo.sdkVersion || 'Unknown',
+          build: detailedAndroidInfo.buildId || 'Unknown',
+          version: detailedAndroidInfo.androidVersion || 'Unknown',
+          batteryLevel: detailedAndroidInfo.batteryLevel || 'Unknown',
+          wifiInfo: detailedAndroidInfo.wifiInfo || 'Unknown',
+          cpuModel: androidHardwareInfo.cpu?.model || 'Unknown',
+          cpuCores: androidHardwareInfo.cpu?.cores || 'Unknown',
+          storageTotal: androidHardwareInfo.storage?.total || 'Unknown',
+          storageUsed: androidHardwareInfo.storage?.used || 'Unknown'
         };
       } catch (error) {
         console.error('Erro ao obter informações do Android:', error);
       }
     }
+    
+    // Obter informações da bateria
+    const batteryInfo = await BatteryUtils.getBatteryInfo();
+    
+    // Obter informações adicionais do sistema
+    const additionalInfo = await SystemUtils.getAdditionalInfo();
     
     return {
       hostname: os.hostname(),
@@ -82,16 +168,22 @@ async function getSystemInfo() {
         percentage: ((usedDisk / totalDisk) * 100).toFixed(1) + '%'
       },
       uptime: formatUptime(os.uptime()),
-      shell: process.env.SHELL || 'Desconhecido',
-      resolution: graphics.displays.length > 0 ? 
-        `${graphics.displays[0].resolutionX}x${graphics.displays[0].resolutionY}` : 'Desconhecido',
-      de: process.env.DESKTOP_SESSION || process.env.XDG_CURRENT_DESKTOP || 'Desconhecido',
-      wm: process.env.WINDOWMANAGER || 'Desconhecido',
-      terminal: process.env.TERM || process.env.TERMINAL || 'Desconhecido',
-      androidInfo: isAndroid ? androidInfo : null
+      shell: process.env.SHELL || 'Unknown',
+      resolution: resolution,
+      de: process.env.DESKTOP_SESSION || process.env.XDG_CURRENT_DESKTOP || 'Unknown',
+      wm: process.env.WINDOWMANAGER || 'Unknown',
+      terminal: process.env.TERM || process.env.TERMINAL || 'Unknown',
+      androidInfo: isAndroid ? androidInfo : null,
+      battery: batteryInfo,
+      packages: additionalInfo.packages,
+      display: additionalInfo.display,
+      theme: additionalInfo.theme,
+      locale: additionalInfo.locale,
+      network: additionalInfo.network,
+      swap: additionalInfo.swap
     };
   } catch (error) {
-    console.error('Erro ao obter informações do sistema:', error);
+    console.error('Error getting system information:', error);
     return {};
   }
 }
@@ -112,24 +204,22 @@ function formatUptime(uptime) {
 
 // Gerar arte ASCII para diferentes sistemas
 function getAsciiArt(system) {
-  // Usar arte ASCII do arquivo de configuração
-  const asciiArts = config.asciiArt;
-  
-  // Selecionar arte ASCII com base no sistema
-  let art;
-  if (isAndroid) {
-    art = asciiArts.android;
-  } else if (system.platform.toLowerCase().includes('linux')) {
-    art = asciiArts.linux;
-  } else if (system.platform.toLowerCase().includes('win')) {
-    art = asciiArts.windows;
-  } else if (system.platform.toLowerCase().includes('darwin')) {
-    art = asciiArts.macos;
-  } else {
-    art = asciiArts.default;
+  if (options.system) {
+    return asciiLoader.getAsciiArt(options.system);
   }
   
-  return art;
+  // Detecção automática do sistema
+  if (isAndroid) {
+    return asciiLoader.getAsciiArt('android');
+  } else if (system.platform.toLowerCase().includes('linux')) {
+    return asciiLoader.getAsciiArt(system.distro);
+  } else if (system.platform.toLowerCase().includes('win')) {
+    return asciiLoader.getAsciiArt('windows');
+  } else if (system.platform.toLowerCase().includes('darwin')) {
+    return asciiLoader.getAsciiArt('macos');
+  }
+  
+  return asciiLoader.getAsciiArt('unknown');
 }
 
 // Exibir informações do sistema com arte ASCII
@@ -137,29 +227,17 @@ async function displaySystemInfo() {
   const info = await getSystemInfo();
   const asciiArt = config.display.showAsciiArt ? getAsciiArt(info) : [];
   
-  // Título com figlet
-  console.log(config.colors.title(figlet.textSync('NodeFetch', {
-    font: config.display.titleFont,
-    horizontalLayout: 'default',
-    verticalLayout: 'default'
-  })));
-  
   // Linha separadora
   console.log(config.colors.title(config.display.separator.repeat(config.display.separatorLength)));
+  
+  // Adicionar linha em branco antes da arte ASCII
+  console.log('');
   
   // Preparar linhas de informação com base nas configurações
   const infoLines = [];
   
   // Adicionar informações com base nas configurações
   if (config.showInfo.distro) {
-    infoLines.push(`${config.colors.labels('Sistema')}     : ${info.distro} ${info.release} (${info.arch})`);
-  }
-  
-  if (config.showInfo.kernel) {
-    infoLines.push(`${config.colors.labels('Kernel')}      : ${info.kernel}`);
-  }
-  
-  if (config.showInfo.hostname) {
     infoLines.push(`${config.colors.labels('Hostname')}    : ${info.hostname}`);
   }
   
@@ -176,69 +254,85 @@ async function displaySystemInfo() {
   }
   
   if (config.showInfo.memory) {
-    infoLines.push(`${config.colors.labels('Memória')}     : ${info.memory.used} / ${info.memory.total} (${info.memory.percentage})`);
+    infoLines.push(`${config.colors.labels('Memory')}      : ${info.memory.used} / ${info.memory.total} (${info.memory.percentage})`);
+    // Add swap information right after memory
+    if (info.swap && Object.keys(info.swap).length > 0) {
+      infoLines.push(`${config.colors.labels('Swap')}        : ${info.swap.used} / ${info.swap.total} (${info.swap.percentage})`);
+    }
   }
   
   if (config.showInfo.disk) {
-    infoLines.push(`${config.colors.labels('Disco')}       : ${info.disk.used} / ${info.disk.total} (${info.disk.percentage})`);
+    infoLines.push(`${config.colors.labels('Disk')}        : ${info.disk.used} / ${info.disk.total} (${info.disk.percentage})`);
   }
   
   if (config.showInfo.resolution) {
-    infoLines.push(`${config.colors.labels('Resolução')}   : ${info.resolution}`);
+    infoLines.push(`${config.colors.labels('Resolution')}  : ${info.resolution}`);
   }
   
-  // Adicionar informações específicas do Android se disponíveis
-  if (isAndroid && info.androidInfo) {
-    if (config.showInfo.device) {
-      infoLines.push(`${config.colors.labels('Dispositivo')}  : ${info.androidInfo.manufacturer} ${info.androidInfo.device}`);
-    }
-    
-    if (config.showInfo.androidVersion) {
-      infoLines.push(`${config.colors.labels('Android')}     : ${info.androidInfo.version} (SDK ${info.androidInfo.sdk})`);
-      infoLines.push(`${config.colors.labels('Build')}       : ${info.androidInfo.build}`);
-    }
-    
-    if (config.showInfo.batteryLevel) {
-      infoLines.push(`${config.colors.labels('Bateria')}     : ${info.androidInfo.batteryLevel}`);
-    }
-    
-    if (config.showInfo.wifiInfo) {
-      infoLines.push(`${config.colors.labels('WiFi')}        : ${info.androidInfo.wifiInfo}`);
-    }
+  // Add package information if available
+  if (info.packages) {
+    infoLines.push(`${config.colors.labels('Packages')}    : ${info.packages}`);
   }
   
-  // Adicionar informações de ambiente desktop se não for Android
-  if (!isAndroid) {
-    if (config.showInfo.de) {
-      infoLines.push(`${config.colors.labels('DE/WM')}        : ${info.de} / ${info.wm}`);
-    }
-    
-    if (config.showInfo.terminal) {
-      infoLines.push(`${config.colors.labels('Terminal')}    : ${info.terminal}`);
-    }
+  // Adicionar informações de display se disponíveis
+  if (info.display && info.display.length > 0) {
+    info.display.forEach(display => {
+      let displayInfo = `${config.colors.labels('Display')}     : ${display.resolution}`;
+      if (display.refresh) displayInfo += ` @ ${display.refresh}`;
+      if (display.size) displayInfo += ` in ${display.size}`;
+      if (display.name) displayInfo += ` [${display.name}]`;
+      infoLines.push(displayInfo);
+    });
+  }
+  
+  // Adicionar informações de tema se disponíveis
+  if (info.theme && Object.keys(info.theme).length > 0) {
+    Object.entries(info.theme).forEach(([key, value]) => {
+      if (value && value !== 'Unknown') {
+        const label = key.charAt(0).toUpperCase() + key.slice(1);
+        infoLines.push(`${config.colors.labels(label.padEnd(10))}  : ${value}`);
+      }
+    });
+  }
+  
+  // Adicionar informações de localização se disponíveis
+  if (info.locale && Object.keys(info.locale).length > 0) {
+    Object.entries(info.locale).forEach(([key, value]) => {
+      if (value && value !== 'Unknown') {
+        const label = key.charAt(0).toUpperCase() + key.slice(1);
+        infoLines.push(`${config.colors.labels(label.padEnd(10))}  : ${value}`);
+      }
+    });
   }
   
   // Calcular o comprimento máximo da arte ASCII
   const asciiWidth = Math.max(...asciiArt.map(line => line.length));
   
+  // Calcular o número de linhas vazias necessárias para centralizar
+  const totalLines = Math.max(asciiArt.length, infoLines.length);
+  const emptyLinesBefore = Math.floor((asciiArt.length - infoLines.length) / 2);
+  const emptyLinesAfter = asciiArt.length - infoLines.length - emptyLinesBefore;
+  
   // Exibir arte ASCII e informações lado a lado
-  const maxLines = Math.max(asciiArt.length, infoLines.length);
-  for (let i = 0; i < maxLines; i++) {
+  for (let i = 0; i < totalLines; i++) {
     let line = '';
     
     // Adicionar linha da arte ASCII se disponível e configurada para exibir
     if (config.display.showAsciiArt && i < asciiArt.length) {
+      // Adicionar espaço à esquerda
+      line += ' '.repeat(5);
       line += config.colors.ascii(asciiArt[i]);
       // Preencher com espaços para alinhar
       line += ' '.repeat(asciiWidth - asciiArt[i].length + 5);
     } else if (config.display.showAsciiArt) {
       // Se não houver mais linhas de arte ASCII, adicionar espaços
-      line += ' '.repeat(asciiWidth + 5);
+      line += ' '.repeat(asciiWidth + 10); // Aumentado para compensar o espaço à esquerda
     }
     
     // Adicionar linha de informação se disponível
-    if (i < infoLines.length) {
-      line += infoLines[i];
+    const infoIndex = i - emptyLinesBefore;
+    if (infoIndex >= 0 && infoIndex < infoLines.length) {
+      line += infoLines[infoIndex];
     }
     
     console.log(line);

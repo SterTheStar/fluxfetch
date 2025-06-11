@@ -1,23 +1,37 @@
 {
-  "name": "node-fetch",
+  "name": "nodefetch",
   "version": "1.0.0",
-  "description": "Um clone do neofetch/fastfetch em Node.js com suporte para Android",
+  "description": "Aplicação para buscar informações do sistema",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "build": "npx pkg@5.8.1 .",
+    "build:linux-x64": "npx pkg@5.8.1 . --target node14-linux-x64 --output dist/nodefetch-linux-x64",
+    "build:windows-x64": "npx pkg@5.8.1 . --target node14-win-x64 --output dist/nodefetch-windows-x64.exe",
+    "build:all": "npm run build:linux-x64 && npm run build:windows-x64",
+    "build:installers": "npm run build:all && chmod +x install.sh && chmod +x install.bat",
+    "build:complete": "npm run build:installers && cd dist && zip -r nodefetch-linux.zip nodefetch-linux-x64 ../install.sh && zip -r nodefetch-windows.zip nodefetch-windows-x64.exe ../install.bat && cd .."
   },
-  "keywords": [
-    "neofetch",
-    "fastfetch",
-    "system-info",
-    "android"
-  ],
+  "keywords": [],
   "author": "",
-  "license": "MIT",
+  "license": "ISC",
+  "bin": "index.js",
   "dependencies": {
-    "chalk": "^4.1.2",
-    "os-utils": "^0.0.14",
-    "systeminformation": "^5.17.12",
-    "figlet": "^1.6.0"
+    "node-fetch": "^2.6.7",
+    "systeminformation": "^5.9.13"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "assets": [
+      "node_modules/node-fetch/**/*",
+      "node_modules/systeminformation/**/*",
+      "ascii/**/*"
+    ],
+    "targets": [
+      "node14-linux-x64",
+      "node14-win-x64"
+    ]
   }
 }
