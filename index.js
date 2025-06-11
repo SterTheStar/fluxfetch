@@ -6,12 +6,14 @@ const chalk = require('chalk');
 const figlet = require('figlet');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const { program } = require('commander');
 const config = require('./config');
 const androidUtils = require('./android-utils');
 const asciiLoader = require('./ascii-loader');
 const BatteryUtils = require('./battery-utils');
 const SystemUtils = require('./system-utils');
+const GpuUtils = require('./gpu-utils');
 
 // Configurar opções de linha de comando
 program
@@ -54,7 +56,6 @@ async function getScreenResolution() {
     // Fallback: Tentar obter resolução usando o módulo os
     if (process.platform === 'win32') {
       // No Windows, podemos tentar usar o comando wmic
-      const { execSync } = require('child_process');
       try {
         const output = execSync('wmic path Win32_VideoController get CurrentHorizontalResolution,CurrentVerticalResolution').toString();
         const match = output.match(/(\d+)\s+(\d+)/);
@@ -66,7 +67,6 @@ async function getScreenResolution() {
       }
     } else if (process.platform === 'linux') {
       // No Linux, podemos tentar usar xrandr
-      const { execSync } = require('child_process');
       try {
         const output = execSync('xrandr --current').toString();
         const match = output.match(/(\d+)x(\d+)/);
@@ -88,6 +88,85 @@ async function getScreenResolution() {
 
 // Detectar se está rodando em ambiente Android
 const isAndroid = androidUtils.isAndroid;
+
+// Função para obter o caminho do terminal
+function getTerminalPath() {
+  // No Linux, tentar usar o comando tty primeiro
+  if (process.platform === 'linux') {
+    try {
+      const ttyOutput = execSync('tty', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      if (ttyOutput && ttyOutput !== 'not a tty') {
+        return ttyOutput;
+      }
+    } catch (error) {
+      // Ignorar erro silenciosamente e tentar outros métodos
+    }
+  }
+
+  // Tentar obter o terminal atual usando ps
+  try {
+    const psOutput = execSync('ps -p $$ -o tty=', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    if (psOutput && psOutput !== '?') {
+      return '/dev/' + psOutput;
+    }
+  } catch (error) {
+    // Ignorar erro silenciosamente
+  }
+
+  // Tentar usar who para obter o terminal atual
+  try {
+    const whoOutput = execSync('who am i', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    const ttyMatch = whoOutput.match(/pts\/\d+/);
+    if (ttyMatch) {
+      return '/dev/' + ttyMatch[0];
+    }
+  } catch (error) {
+    // Ignorar erro silenciosamente
+  }
+  
+  // Tentar usar w para obter o terminal atual
+  try {
+    const wOutput = execSync('w', { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const ttyMatch = wOutput.match(/pts\/\d+/);
+    if (ttyMatch) {
+      return '/dev/' + ttyMatch[0];
+    }
+  } catch (error) {
+    // Ignorar erro silenciosamente
+  }
+  
+  // Fallback para variáveis de ambiente
+  if (process.env.TTY) {
+    return process.env.TTY;
+  }
+  
+  if (process.env.TERMINAL_EMULATOR) {
+    return process.env.TERMINAL_EMULATOR;
+  }
+  
+  if (process.env.TERM_PROGRAM) {
+    return process.env.TERM_PROGRAM;
+  }
+
+  // Se estiver rodando em um ambiente gráfico, tentar detectar o terminal
+  if (process.env.DISPLAY) {
+    try {
+      const xpropOutput = execSync('xprop -root _NET_WM_PID', { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+      const pidMatch = xpropOutput.match(/_NET_WM_PID\(CARDINAL\) = (\d+)/);
+      if (pidMatch) {
+        const pid = pidMatch[1];
+        const psOutput = execSync(`ps -p ${pid} -o tty=`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+        if (psOutput && psOutput !== '?') {
+          return '/dev/' + psOutput;
+        }
+      }
+    } catch (error) {
+      // Ignorar erro silenciosamente
+    }
+  }
+  
+  return 'Unknown';
+}
 
 // Função para obter informações do sistema
 async function getSystemInfo() {
@@ -145,6 +224,25 @@ async function getSystemInfo() {
     // Obter informações adicionais do sistema
     const additionalInfo = await SystemUtils.getAdditionalInfo();
     
+    // Obter versão do shell
+    let shellVersion = 'Unknown';
+    try {
+      if (process.env.SHELL) {
+        const shellPath = process.env.SHELL;
+        const shellName = path.basename(shellPath);
+        const versionOutput = execSync(`${shellName} --version`).toString();
+        const versionMatch = versionOutput.match(/\d+\.\d+\.\d+/);
+        if (versionMatch) {
+          shellVersion = versionMatch[0];
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao obter versão do shell:', error);
+    }
+
+    // Obter informações da GPU
+    const gpuInfo = await GpuUtils.getGpuInfo();
+    
     return {
       hostname: os.hostname(),
       platform: isAndroid ? 'Android' : os_info.platform,
@@ -157,6 +255,7 @@ async function getSystemInfo() {
         cores: cpu.cores,
         speed: cpu.speed + ' GHz'
       },
+      gpu: gpuInfo,
       memory: {
         total: totalMem + ' GB',
         used: usedMem + ' GB',
@@ -168,11 +267,12 @@ async function getSystemInfo() {
         percentage: ((usedDisk / totalDisk) * 100).toFixed(1) + '%'
       },
       uptime: formatUptime(os.uptime()),
-      shell: process.env.SHELL || 'Unknown',
+      shell: process.env.SHELL ? `${path.basename(process.env.SHELL)} ${shellVersion}` : 'Unknown',
+      terminal: process.env.TERM || process.env.TERMINAL || 'Unknown',
+      terminalPath: getTerminalPath(),
       resolution: resolution,
       de: process.env.DESKTOP_SESSION || process.env.XDG_CURRENT_DESKTOP || 'Unknown',
       wm: process.env.WINDOWMANAGER || 'Unknown',
-      terminal: process.env.TERM || process.env.TERMINAL || 'Unknown',
       androidInfo: isAndroid ? androidInfo : null,
       battery: batteryInfo,
       packages: additionalInfo.packages,
@@ -238,59 +338,106 @@ async function displaySystemInfo() {
   
   // Adicionar informações com base nas configurações
   if (config.showInfo.distro) {
-    infoLines.push(`${config.colors.labels('Hostname')}    : ${info.hostname}`);
+    const username = process.env.USER || process.env.USERNAME || 'unknown';
+    const hostname = info.hostname;
+    const fullText = `${username}@${hostname}`;
+    infoLines.push(`${config.colors.labels(chalk.bold(username))}${chalk.white.bold('@')}${config.colors.labels(chalk.bold(hostname))}`);
+    infoLines.push(`${chalk.white('-'.repeat(fullText.length))}`);
+  }
+  
+  if (config.showInfo.os) {
+    const osName = isAndroid ? 'Android' : 
+                  info.distro ? info.distro : 
+                  info.platform;
+    infoLines.push(`${config.colors.labels(chalk.bold('OS'))}: ${osName} ${info.release} ${info.arch}`);
+  }
+  
+  if (config.showInfo.kernel) {
+    infoLines.push(`${config.colors.labels(chalk.bold('Kernel'))}: ${info.kernel}`);
   }
   
   if (config.showInfo.uptime) {
-    infoLines.push(`${config.colors.labels('Uptime')}      : ${info.uptime}`);
+    infoLines.push(`${config.colors.labels(chalk.bold('Uptime'))}: ${info.uptime}`);
   }
   
   if (config.showInfo.shell) {
-    infoLines.push(`${config.colors.labels('Shell')}       : ${info.shell}`);
+    infoLines.push(`${config.colors.labels(chalk.bold('Shell'))}: ${info.shell}`);
+  }
+  
+  if (config.showInfo.terminal) {
+    const terminalEmulator = process.env.TERMINAL_EMULATOR || process.env.TERM_PROGRAM || 'Unknown';
+    const terminalInfo = `${info.terminalPath} (${terminalEmulator} - ${info.terminal})`;
+    infoLines.push(`${config.colors.labels(chalk.bold('Terminal'))}: ${terminalInfo}`);
   }
   
   if (config.showInfo.cpu) {
-    infoLines.push(`${config.colors.labels('CPU')}         : ${info.cpu.model} (${info.cpu.cores} cores @ ${info.cpu.speed})`);
+    infoLines.push(`${config.colors.labels(chalk.bold('CPU'))}: ${info.cpu.model} (${info.cpu.cores} cores @ ${info.cpu.speed})`);
+  }
+  
+  if (config.showInfo.gpu && info.gpu) {
+    infoLines.push(`${config.colors.labels(chalk.bold('GPU'))}: ${info.gpu}`);
   }
   
   if (config.showInfo.memory) {
-    infoLines.push(`${config.colors.labels('Memory')}      : ${info.memory.used} / ${info.memory.total} (${info.memory.percentage})`);
+    infoLines.push(`${config.colors.labels(chalk.bold('Memory'))}: ${info.memory.used} / ${info.memory.total} (${info.memory.percentage})`);
     // Add swap information right after memory
     if (info.swap && Object.keys(info.swap).length > 0) {
-      infoLines.push(`${config.colors.labels('Swap')}        : ${info.swap.used} / ${info.swap.total} (${info.swap.percentage})`);
+      infoLines.push(`${config.colors.labels(chalk.bold('Swap'))}: ${info.swap.used} / ${info.swap.total} (${info.swap.percentage})`);
     }
   }
   
+  // Adicionar informações da bateria se disponíveis
+  if (info.battery && info.battery.length > 0) {
+    info.battery.forEach(bat => {
+      let batteryInfo = `${config.colors.labels(chalk.bold('Battery'))}: ${bat.capacity}`;
+      if (bat.status) {
+        batteryInfo += ` (${bat.status})`;
+      }
+      if (bat.timeRemaining && bat.timeRemaining !== 'Desconhecido') {
+        batteryInfo += ` - ${bat.timeRemaining}`;
+      }
+      infoLines.push(batteryInfo);
+    });
+  }
+  
   if (config.showInfo.disk) {
-    infoLines.push(`${config.colors.labels('Disk')}        : ${info.disk.used} / ${info.disk.total} (${info.disk.percentage})`);
+    infoLines.push(`${config.colors.labels(chalk.bold('Disk'))}: ${info.disk.used} / ${info.disk.total} (${info.disk.percentage})`);
   }
   
   if (config.showInfo.resolution) {
-    infoLines.push(`${config.colors.labels('Resolution')}  : ${info.resolution}`);
+    infoLines.push(`${config.colors.labels(chalk.bold('Resolution'))}: ${info.resolution}`);
   }
   
   // Add package information if available
   if (info.packages) {
-    infoLines.push(`${config.colors.labels('Packages')}    : ${info.packages}`);
+    infoLines.push(`${config.colors.labels(chalk.bold('Packages'))}: ${info.packages}`);
   }
   
   // Adicionar informações de display se disponíveis
   if (info.display && info.display.length > 0) {
-    info.display.forEach(display => {
-      let displayInfo = `${config.colors.labels('Display')}     : ${display.resolution}`;
-      if (display.refresh) displayInfo += ` @ ${display.refresh}`;
-      if (display.size) displayInfo += ` in ${display.size}`;
-      if (display.name) displayInfo += ` [${display.name}]`;
-      infoLines.push(displayInfo);
-    });
+    const displayInfo = info.display.map(display => {
+      const parts = [];
+      if (display.resolution) parts.push(display.resolution);
+      if (display.refresh) parts.push(display.refresh);
+      if (display.size) parts.push(display.size);
+      if (display.name) parts.push(`(${display.name})`);
+      return parts.join(' ');
+    }).join(', ');
+    
+    if (displayInfo) {
+      infoLines.push(`${config.colors.labels(chalk.bold('Display'))}: ${displayInfo}`);
+    }
+  } else if (info.resolution) {
+    // Fallback para a resolução obtida via getScreenResolution
+    infoLines.push(`${config.colors.labels(chalk.bold('Display'))}: ${info.resolution}`);
   }
   
   // Adicionar informações de tema se disponíveis
   if (info.theme && Object.keys(info.theme).length > 0) {
     Object.entries(info.theme).forEach(([key, value]) => {
       if (value && value !== 'Unknown') {
-        const label = key.charAt(0).toUpperCase() + key.slice(1);
-        infoLines.push(`${config.colors.labels(label.padEnd(10))}  : ${value}`);
+        const label = key.toUpperCase();
+        infoLines.push(`${config.colors.labels(chalk.bold(label))}: ${value}`);
       }
     });
   }
@@ -300,7 +447,7 @@ async function displaySystemInfo() {
     Object.entries(info.locale).forEach(([key, value]) => {
       if (value && value !== 'Unknown') {
         const label = key.charAt(0).toUpperCase() + key.slice(1);
-        infoLines.push(`${config.colors.labels(label.padEnd(10))}  : ${value}`);
+        infoLines.push(`${config.colors.labels(chalk.bold(label))}: ${value}`);
       }
     });
   }
@@ -320,19 +467,19 @@ async function displaySystemInfo() {
     // Adicionar linha da arte ASCII se disponível e configurada para exibir
     if (config.display.showAsciiArt && i < asciiArt.length) {
       // Adicionar espaço à esquerda
-      line += ' '.repeat(5);
+      line += ' '.repeat(8);
       line += config.colors.ascii(asciiArt[i]);
       // Preencher com espaços para alinhar
-      line += ' '.repeat(asciiWidth - asciiArt[i].length + 5);
+      line += ' '.repeat(asciiWidth - asciiArt[i].length + 8);
     } else if (config.display.showAsciiArt) {
       // Se não houver mais linhas de arte ASCII, adicionar espaços
-      line += ' '.repeat(asciiWidth + 10); // Aumentado para compensar o espaço à esquerda
+      line += ' '.repeat(asciiWidth + 19);
     }
     
     // Adicionar linha de informação se disponível
     const infoIndex = i - emptyLinesBefore;
     if (infoIndex >= 0 && infoIndex < infoLines.length) {
-      line += infoLines[infoIndex];
+      line += infoLines[infoIndex].replace(/\s+:/, ':');
     }
     
     console.log(line);
@@ -341,14 +488,16 @@ async function displaySystemInfo() {
   // Exibir cores se configurado
   if (config.display.showColorBlocks) {
     console.log('\n');
+    let colorLine1 = '';
+    let colorLine2 = '';
     for (let i = 0; i < 8; i++) {
-      let colorLine = '';
-      for (let j = 0; j < 2; j++) {
-        const colorCode = j * 8 + i;
-        colorLine += chalk.bgAnsi(colorCode)('   ');
-      }
-      console.log(colorLine);
+      colorLine1 += chalk.bgAnsi(i)('   ');
+      colorLine2 += chalk.bgAnsi(i + 8)('   ');
     }
+    // Adicionar espaços para alinhar com as informações
+    const padding = ' '.repeat(asciiWidth + 19);
+    console.log(padding + colorLine1);
+    console.log(padding + colorLine2);
   }
 }
 

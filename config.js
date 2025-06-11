@@ -31,10 +31,12 @@ const defaultConfig = {
   showInfo: {
     hostname: true,
     distro: true,
+    os: true,
     kernel: true,
     uptime: true,
     shell: true,
     cpu: true,
+    gpu: true,
     memory: true,
     disk: true,
     resolution: true,
