@@ -9,8 +9,8 @@
     "build:linux-x64": "npx pkg@5.8.1 . --target node14-linux-x64 --output dist/nodefetch-linux-x64",
     "build:windows-x64": "npx pkg@5.8.1 . --target node14-win-x64 --output dist/nodefetch-windows-x64.exe",
     "build:all": "npm run build:linux-x64 && npm run build:windows-x64",
-    "build:installers": "npm run build:all && chmod +x install.sh && chmod +x install.bat",
-    "build:complete": "npm run build:installers && cp install.sh install.bat dist/ && cd dist && zip -r nodefetch-linux.zip nodefetch-linux-x64 install.sh && zip -r nodefetch-windows.zip nodefetch-windows-x64.exe install.bat && cd .."
+    "build:installers": "npm run build:all && chmod +x scripts/install.sh && chmod +x scripts/install.bat",
+    "build:complete": "npm run build:installers && cp scripts/install.sh scripts/install.bat dist/ && cd dist && zip -r nodefetch-linux.zip nodefetch-linux-x64 install.sh && zip -r nodefetch-windows.zip nodefetch-windows-x64.exe install.bat && cd .."
   },
   "keywords": [],
   "author": "",

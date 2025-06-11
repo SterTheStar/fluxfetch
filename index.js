@@ -9,11 +9,11 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { program } = require('commander');
 const config = require('./config');
-const androidUtils = require('./android-utils');
-const asciiLoader = require('./ascii-loader');
-const BatteryUtils = require('./battery-utils');
-const SystemUtils = require('./system-utils');
-const GpuUtils = require('./gpu-utils');
+const androidUtils = require('./utils/android-utils');
+const asciiLoader = require('./utils/ascii-loader');
+const BatteryUtils = require('./utils/battery-utils');
+const SystemUtils = require('./utils/system-utils');
+const GpuUtils = require('./utils/gpu-utils');
 
 // Configurar opções de linha de comando
 program
