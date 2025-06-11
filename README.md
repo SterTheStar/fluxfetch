@@ -70,7 +70,7 @@ npm run build:windows-x64  # Windows 64-bit
 
 ## License
 
-GPL 3.0
+GPL-3.0
 
 ## Repository
 
