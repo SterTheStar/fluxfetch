@@ -3,11 +3,17 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// Check if running on Android
+const isAndroid = process.env.ANDROID_ROOT || process.env.ANDROID_DATA;
+
 class BatteryUtils {
   static async getBatteryInfo() {
-    const platform = os.platform();
-    
     try {
+      if (isAndroid) {
+        return await this.getAndroidBatteryInfo();
+      }
+
+      const platform = os.platform();
       switch (platform) {
         case 'linux':
           return await this.getLinuxBatteryInfo();
@@ -15,20 +21,17 @@ class BatteryUtils {
           return await this.getMacOSBatteryInfo();
         case 'win32':
           return await this.getWindowsBatteryInfo();
-        case 'android':
-          return await this.getAndroidBatteryInfo();
         default:
           return null;
       }
     } catch (error) {
-      console.error('Erro ao obter informações da bateria:', error);
+      console.error('Error getting battery information:', error);
       return null;
     }
   }
 
   static async getLinuxBatteryInfo() {
     try {
-      // Verificar se o diretório /sys/class/power_supply existe
       if (!fs.existsSync('/sys/class/power_supply')) {
         return null;
       }
@@ -45,15 +48,26 @@ class BatteryUtils {
       for (const bat of batteryDirs) {
         const basePath = `/sys/class/power_supply/${bat}`;
         
-        // Ler informações da bateria
         const capacity = fs.readFileSync(path.join(basePath, 'capacity'), 'utf8').trim();
         const status = fs.readFileSync(path.join(basePath, 'status'), 'utf8').trim();
         const powerNow = fs.readFileSync(path.join(basePath, 'power_now'), 'utf8').trim();
         const energyNow = fs.readFileSync(path.join(basePath, 'energy_now'), 'utf8').trim();
         const energyFull = fs.readFileSync(path.join(basePath, 'energy_full'), 'utf8').trim();
         
-        // Calcular tempo restante (se possível)
-        let timeRemaining = 'Desconhecido';
+        let voltage = 'Unknown';
+        let temperature = 'Unknown';
+        
+        if (fs.existsSync(path.join(basePath, 'voltage_now'))) {
+          const voltageValue = parseInt(fs.readFileSync(path.join(basePath, 'voltage_now'), 'utf8').trim());
+          voltage = `${(voltageValue / 1000000).toFixed(2)}V`;
+        }
+        
+        if (fs.existsSync(path.join(basePath, 'temp'))) {
+          const tempValue = parseInt(fs.readFileSync(path.join(basePath, 'temp'), 'utf8').trim());
+          temperature = `${(tempValue / 10).toFixed(1)}°C`;
+        }
+        
+        let timeRemaining = 'Unknown';
         if (status === 'Discharging' && powerNow !== '0') {
           const hours = Math.floor(energyNow / powerNow);
           const minutes = Math.floor((energyNow % powerNow) / (powerNow / 60));
@@ -67,13 +81,15 @@ class BatteryUtils {
           power: `${(parseInt(powerNow) / 1000000).toFixed(2)}W`,
           energy: `${(parseInt(energyNow) / 1000000).toFixed(2)}Wh`,
           fullEnergy: `${(parseInt(energyFull) / 1000000).toFixed(2)}Wh`,
-          timeRemaining: timeRemaining
+          timeRemaining: timeRemaining,
+          voltage: voltage,
+          temperature: temperature
         });
       }
       
       return batteryInfo;
     } catch (error) {
-      console.error('Erro ao obter informações da bateria no Linux:', error);
+      console.error('Error getting battery information on Linux:', error);
       return null;
     }
   }
@@ -90,17 +106,36 @@ class BatteryUtils {
       const batteryInfo = [];
       const batteryLine = lines[1];
       
-      // Extrair informações da bateria
       const capacityMatch = batteryLine.match(/(\d+)%/);
       const statusMatch = batteryLine.match(/(charging|discharging|AC attached)/i);
       const timeMatch = batteryLine.match(/(\d+):(\d+)/);
+      
+      let temperature = 'Unknown';
+      let voltage = 'Unknown';
+      
+      try {
+        const ioregOutput = execSync('ioreg -l | grep -i "battery"').toString();
+        const tempMatch = ioregOutput.match(/"Temperature"=(\d+)/);
+        const voltageMatch = ioregOutput.match(/"Voltage"=(\d+)/);
+        
+        if (tempMatch) {
+          temperature = `${(parseInt(tempMatch[1]) / 100).toFixed(1)}°C`;
+        }
+        if (voltageMatch) {
+          voltage = `${(parseInt(voltageMatch[1]) / 1000).toFixed(2)}V`;
+        }
+      } catch (error) {
+        console.error('Error getting detailed battery info on macOS:', error);
+      }
       
       if (capacityMatch) {
         const info = {
           name: 'BAT0',
           capacity: `${capacityMatch[1]}%`,
-          status: statusMatch ? statusMatch[1] : 'Desconhecido',
-          timeRemaining: timeMatch ? `${timeMatch[1]}h ${timeMatch[2]}m` : 'Desconhecido'
+          status: statusMatch ? statusMatch[1] : 'Unknown',
+          timeRemaining: timeMatch ? `${timeMatch[1]}h ${timeMatch[2]}m` : 'Unknown',
+          temperature: temperature,
+          voltage: voltage
         };
         
         batteryInfo.push(info);
@@ -108,14 +143,14 @@ class BatteryUtils {
       
       return batteryInfo;
     } catch (error) {
-      console.error('Erro ao obter informações da bateria no macOS:', error);
+      console.error('Error getting battery information on macOS:', error);
       return null;
     }
   }
 
   static async getWindowsBatteryInfo() {
     try {
-      const output = execSync('wmic path Win32_Battery get EstimatedChargeRemaining,Status,EstimatedRunTime /format:list').toString();
+      const output = execSync('wmic path Win32_Battery get EstimatedChargeRemaining,Status,EstimatedRunTime,DesignVoltage,Voltage /format:list').toString();
       const lines = output.split('\n');
       
       if (lines.length < 2) {
@@ -143,10 +178,17 @@ class BatteryUtils {
             const remainingMinutes = minutes % 60;
             currentBattery.timeRemaining = `${hours}h ${remainingMinutes}m`;
           } else {
-            currentBattery.timeRemaining = 'Desconhecido';
+            currentBattery.timeRemaining = 'Unknown';
+          }
+        } else if (line.includes('Voltage')) {
+          const voltage = parseInt(line.split('=')[1].trim());
+          if (!isNaN(voltage)) {
+            currentBattery.voltage = `${(voltage / 1000).toFixed(2)}V`;
           }
         }
       }
+      
+      currentBattery.temperature = 'N/A';
       
       if (Object.keys(currentBattery).length > 0) {
         batteryInfo.push(currentBattery);
@@ -154,47 +196,57 @@ class BatteryUtils {
       
       return batteryInfo;
     } catch (error) {
-      console.error('Erro ao obter informações da bateria no Windows:', error);
+      console.error('Error getting battery information on Windows:', error);
       return null;
     }
   }
 
   static async getAndroidBatteryInfo() {
     try {
-      const { exec } = require('child_process');
+      const batteryPath = '/sys/class/power_supply/battery';
       
-      // Função auxiliar para executar comandos
-      const execCommand = (command) => {
-        return new Promise((resolve, reject) => {
-          exec(command, (error, stdout, stderr) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-            resolve(stdout.trim());
-          });
-        });
-      };
-
-      // Obter informações da bateria
-      const batteryLevel = await execCommand('dumpsys battery | grep level | cut -d ":" -f2 || echo "N/A"');
-      const batteryStatus = await execCommand('dumpsys battery | grep status | cut -d ":" -f2 || echo "N/A"');
-      const batteryHealth = await execCommand('dumpsys battery | grep health | cut -d ":" -f2 || echo "N/A"');
-      const batteryTemp = await execCommand('dumpsys battery | grep temperature | cut -d ":" -f2 || echo "N/A"');
-      
-      if (batteryLevel === 'N/A') {
+      if (!fs.existsSync(batteryPath)) {
         return null;
       }
       
-      return [{
+      const batteryInfo = [];
+      const info = {
         name: 'BAT0',
-        capacity: `${batteryLevel.trim()}%`,
-        status: batteryStatus.trim(),
-        health: batteryHealth.trim(),
-        temperature: `${(parseInt(batteryTemp) / 10).toFixed(1)}°C`
-      }];
+        capacity: '0%',
+        status: 'Unknown',
+        temperature: '0°C',
+        voltage: '0V'
+      };
+
+      try {
+        if (fs.existsSync(path.join(batteryPath, 'capacity'))) {
+          const capacity = fs.readFileSync(path.join(batteryPath, 'capacity'), 'utf8').trim();
+          info.capacity = `${capacity}%`;
+        }
+        
+        if (fs.existsSync(path.join(batteryPath, 'status'))) {
+          const status = fs.readFileSync(path.join(batteryPath, 'status'), 'utf8').trim();
+          info.status = status;
+        }
+        
+        if (fs.existsSync(path.join(batteryPath, 'temp'))) {
+          const temp = parseInt(fs.readFileSync(path.join(batteryPath, 'temp'), 'utf8').trim());
+          info.temperature = `${(temp / 10).toFixed(1)}°C`;
+        }
+        
+        if (fs.existsSync(path.join(batteryPath, 'voltage_now'))) {
+          const voltage = parseInt(fs.readFileSync(path.join(batteryPath, 'voltage_now'), 'utf8').trim());
+          info.voltage = `${(voltage / 1000000).toFixed(2)}V`;
+        }
+
+        batteryInfo.push(info);
+        return batteryInfo;
+      } catch (error) {
+        console.error('Error reading battery files:', error);
+        return null;
+      }
     } catch (error) {
-      console.error('Erro ao obter informações da bateria no Android:', error);
+      console.error('Error getting battery information on Android:', error);
       return null;
     }
   }
