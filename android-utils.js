@@ -5,7 +5,6 @@
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const BatteryUtils = require('./battery-utils');
 
 // Verifica se está rodando em ambiente Android
 const isAndroid = process.env.ANDROID_ROOT || process.env.ANDROID_DATA;
@@ -45,8 +44,14 @@ async function getAndroidInfo() {
     const buildId = await execCommand('getprop ro.build.id || echo "Desconhecido"');
     const buildFingerprint = await execCommand('getprop ro.build.fingerprint || echo "Desconhecido"');
     
-    // Informações de bateria usando BatteryUtils
-    const batteryInfo = await BatteryUtils.getBatteryInfo();
+    // Informações de bateria (se disponível)
+    let batteryLevel = "Desconhecido";
+    try {
+      batteryLevel = await execCommand('dumpsys battery | grep level | cut -d ":" -f2 || echo "Desconhecido"');
+      batteryLevel = batteryLevel.trim() + "%";
+    } catch (e) {
+      // Ignora erros ao obter informações da bateria
+    }
     
     // Informações de rede
     let wifiInfo = "Desconhecido";
@@ -65,7 +70,7 @@ async function getAndroidInfo() {
       sdkVersion,
       buildId,
       buildFingerprint,
-      batteryLevel: batteryInfo.level,
+      batteryLevel,
       wifiInfo
     };
   } catch (error) {

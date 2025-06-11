@@ -338,7 +338,11 @@ async function displaySystemInfo() {
   
   // Adicionar informações com base nas configurações
   if (config.showInfo.distro) {
-    infoLines.push(`${config.colors.labels(chalk.bold('Hostname'))}: ${info.hostname}`);
+    const username = process.env.USER || process.env.USERNAME || 'unknown';
+    const hostname = info.hostname;
+    const fullText = `${username}@${hostname}`;
+    infoLines.push(`${config.colors.labels(chalk.bold(username))}${chalk.white.bold('@')}${config.colors.labels(chalk.bold(hostname))}`);
+    infoLines.push(`${chalk.white('-'.repeat(fullText.length))}`);
   }
   
   if (config.showInfo.os) {
@@ -418,7 +422,7 @@ async function displaySystemInfo() {
   if (info.theme && Object.keys(info.theme).length > 0) {
     Object.entries(info.theme).forEach(([key, value]) => {
       if (value && value !== 'Unknown') {
-        const label = key.charAt(0).toUpperCase() + key.slice(1);
+        const label = key.toUpperCase();
         infoLines.push(`${config.colors.labels(chalk.bold(label))}: ${value}`);
       }
     });
@@ -470,14 +474,16 @@ async function displaySystemInfo() {
   // Exibir cores se configurado
   if (config.display.showColorBlocks) {
     console.log('\n');
+    let colorLine1 = '';
+    let colorLine2 = '';
     for (let i = 0; i < 8; i++) {
-      let colorLine = '';
-      for (let j = 0; j < 2; j++) {
-        const colorCode = j * 8 + i;
-        colorLine += chalk.bgAnsi(colorCode)('   ');
-      }
-      console.log(colorLine);
+      colorLine1 += chalk.bgAnsi(i)('   ');
+      colorLine2 += chalk.bgAnsi(i + 8)('   ');
     }
+    // Adicionar espaços para alinhar com as informações
+    const padding = ' '.repeat(asciiWidth + 19);
+    console.log(padding + colorLine1);
+    console.log(padding + colorLine2);
   }
 }
 
