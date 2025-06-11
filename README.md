@@ -1,69 +1,99 @@
 # NodeFetch
 
-Um clone do neofetch/fastfetch em Node.js com suporte para Android. Este aplicativo exibe informações do sistema junto com arte ASCII personalizada.
+A Node.js clone of neofetch/fastfetch with Android support. This application displays system information along with custom ASCII art.
 
-## Características
+## Features
 
-- Exibe informações detalhadas do sistema (CPU, memória, disco, etc.)
-- Mostra arte ASCII personalizada baseada no sistema operacional
-- Suporte para ambientes Linux, Windows, macOS e Android
-- Interface colorida no terminal
+* Displays detailed system information (CPU, memory, disk, etc.)
+* Shows custom ASCII art based on the operating system
+* Support for Linux, Windows, macOS and Android environments
+* Colored terminal interface
 
-## Requisitos
+## Requirements
 
-- Node.js 12 ou superior
-- Para uso em Android: Termux ou ambiente similar com Node.js instalado
+* Node.js 12 or higher
+* For Android use: Termux or similar environment with Node.js installed
 
-## Instalação
+## Installation
 
+### From Source
 ```bash
-# Clone o repositório
-git clone https://github.com/seu-usuario/node-fetch.git
-cd node-fetch
+# Clone the repository
+git clone https://github.com/SterTheStar/nodefetch.git
+cd nodefetch
 
-# Instale as dependências
+# Install dependencies
 npm install
 ```
 
-## Uso
+### Using Pre-built Binaries
+
+#### Linux
+```bash
+# Download and extract the Linux package
+unzip nodefetch-linux.zip
+
+# Run the installer
+sudo ./install.sh
+```
+
+#### Windows
+1. Download and extract `nodefetch-windows.zip`
+2. Run `install.bat` as administrator
+
+## Usage
 
 ```bash
-# Execute o aplicativo
+# Run the application
 node index.js
 
-# Ou use o comando npm
+# Or use npm
 npm start
 ```
 
-### Uso no Android (via Termux)
+### Android Usage (via Termux)
 
-1. Instale o Termux da Google Play Store ou F-Droid
-2. Abra o Termux e instale Node.js:
-
+1. Install Termux from Google Play Store or F-Droid
+2. Open Termux and install Node.js:
 ```bash
 pkg update
 pkg install nodejs
 ```
 
-3. Clone o repositório e instale as dependências:
-
+3. Clone the repository and install dependencies:
 ```bash
 pkg install git
-git clone https://github.com/seu-usuario/node-fetch.git
-cd node-fetch
+git clone https://github.com/SterTheStar/nodefetch.git
+cd nodefetch
 npm install
 ```
 
-4. Execute o aplicativo:
-
+4. Run the application:
 ```bash
 node index.js
 ```
 
-## Personalização
+## Customization
 
-Você pode personalizar as artes ASCII editando o arquivo `index.js` e modificando o objeto `asciiArts`.
+You can customize the ASCII art by editing the `ascii-loader.js` file and modifying the `asciiArts` object.
 
-## Licença
+## Building from Source
 
-MIT
+To build the application for different platforms:
+
+```bash
+# Build for all platforms
+npm run build:all
+
+# Build for specific platforms
+npm run build:linux-x64    # Linux 64-bit
+npm run build:windows-x64  # Windows 64-bit
+```
+
+## License
+
+GPL 3.0
+
+## Repository
+
+[GitHub Repository](https://github.com/SterTheStar/nodefetch)
