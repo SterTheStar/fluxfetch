@@ -56,6 +56,7 @@ class BatteryUtils {
         
         let voltage = 'Unknown';
         let temperature = 'Unknown';
+        let current = 'Unknown';
         
         if (fs.existsSync(path.join(basePath, 'voltage_now'))) {
           const voltageValue = parseInt(fs.readFileSync(path.join(basePath, 'voltage_now'), 'utf8').trim());
@@ -65,6 +66,11 @@ class BatteryUtils {
         if (fs.existsSync(path.join(basePath, 'temp'))) {
           const tempValue = parseInt(fs.readFileSync(path.join(basePath, 'temp'), 'utf8').trim());
           temperature = `${(tempValue / 10).toFixed(1)}°C`;
+        }
+
+        if (fs.existsSync(path.join(basePath, 'current_now'))) {
+          const currentValue = parseInt(fs.readFileSync(path.join(basePath, 'current_now'), 'utf8').trim());
+          current = `${(currentValue / 1000).toFixed(0)}mA`;
         }
         
         let timeRemaining = 'Unknown';
@@ -83,7 +89,8 @@ class BatteryUtils {
           fullEnergy: `${(parseInt(energyFull) / 1000000).toFixed(2)}Wh`,
           timeRemaining: timeRemaining,
           voltage: voltage,
-          temperature: temperature
+          temperature: temperature,
+          current: current
         });
       }
       
@@ -215,28 +222,46 @@ class BatteryUtils {
         capacity: '0%',
         status: 'Unknown',
         temperature: '0°C',
-        voltage: '0V'
+        voltage: '0V',
+        current: '0mA',
+        power: '0W'
       };
 
       try {
+        // Capacidade
         if (fs.existsSync(path.join(batteryPath, 'capacity'))) {
           const capacity = fs.readFileSync(path.join(batteryPath, 'capacity'), 'utf8').trim();
           info.capacity = `${capacity}%`;
         }
         
+        // Status
         if (fs.existsSync(path.join(batteryPath, 'status'))) {
           const status = fs.readFileSync(path.join(batteryPath, 'status'), 'utf8').trim();
           info.status = status;
         }
         
+        // Temperatura
         if (fs.existsSync(path.join(batteryPath, 'temp'))) {
           const temp = parseInt(fs.readFileSync(path.join(batteryPath, 'temp'), 'utf8').trim());
           info.temperature = `${(temp / 10).toFixed(1)}°C`;
         }
         
+        // Voltagem
         if (fs.existsSync(path.join(batteryPath, 'voltage_now'))) {
           const voltage = parseInt(fs.readFileSync(path.join(batteryPath, 'voltage_now'), 'utf8').trim());
           info.voltage = `${(voltage / 1000000).toFixed(2)}V`;
+        }
+
+        // Corrente
+        if (fs.existsSync(path.join(batteryPath, 'current_now'))) {
+          const current = parseInt(fs.readFileSync(path.join(batteryPath, 'current_now'), 'utf8').trim());
+          info.current = `${(current / 1000).toFixed(0)}mA`;
+        }
+
+        // Potência
+        if (fs.existsSync(path.join(batteryPath, 'power_now'))) {
+          const power = parseInt(fs.readFileSync(path.join(batteryPath, 'power_now'), 'utf8').trim());
+          info.power = `${(power / 1000000).toFixed(2)}W`;
         }
 
         batteryInfo.push(info);

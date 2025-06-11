@@ -188,12 +188,29 @@ async function getSystemInfo() {
     const usedMem = ((mem.total - mem.available) / 1024 / 1024 / 1024).toFixed(2);
     const memPercentage = (((mem.total - mem.available) / mem.total) * 100).toFixed(1);
     
-    // Calcular uso de disco
-    const totalDisk = disk.reduce((acc, item) => acc + item.size, 0) / 1024 / 1024 / 1024;
-    const usedDisk = disk.reduce((acc, item) => acc + item.used, 0) / 1024 / 1024 / 1024;
-    
-    // Informações específicas para Android
+    // Inicializar variáveis para informações adicionais
     let androidInfo = {};
+    let additionalInfo = {};
+    
+    // Obter informações adicionais do sistema
+    try {
+      additionalInfo = await SystemUtils.getAdditionalInfo();
+    } catch (error) {
+      console.error('Erro ao obter informações adicionais:', error);
+      additionalInfo = {
+        packages: 'Unknown',
+        display: [],
+        theme: {},
+        locale: {},
+        network: {},
+        swap: {}
+      };
+    }
+    
+    // Calcular uso de disco
+    let totalDisk = 0;
+    let usedDisk = 0;
+    
     if (isAndroid) {
       try {
         // Obter informações detalhadas do Android usando o módulo androidUtils
@@ -213,16 +230,21 @@ async function getSystemInfo() {
           storageTotal: androidHardwareInfo.storage?.total || 'Unknown',
           storageUsed: androidHardwareInfo.storage?.used || 'Unknown'
         };
+        
+        // Usar informações de armazenamento do Android
+        totalDisk = androidInfo.storageTotal ? parseFloat(androidInfo.storageTotal) : 0;
+        usedDisk = androidInfo.storageUsed ? parseFloat(androidInfo.storageUsed) : 0;
       } catch (error) {
         console.error('Erro ao obter informações do Android:', error);
       }
+    } else {
+      // Usar informações de disco do sistema
+      totalDisk = disk.reduce((acc, item) => acc + item.size, 0) / 1024 / 1024 / 1024;
+      usedDisk = disk.reduce((acc, item) => acc + item.used, 0) / 1024 / 1024 / 1024;
     }
     
     // Obter informações da bateria
     const batteryInfo = await BatteryUtils.getBatteryInfo();
-    
-    // Obter informações adicionais do sistema
-    const additionalInfo = await SystemUtils.getAdditionalInfo();
     
     // Obter versão do shell
     let shellVersion = 'Unknown';
@@ -262,9 +284,9 @@ async function getSystemInfo() {
         percentage: memPercentage + '%'
       },
       disk: {
-        total: totalDisk.toFixed(2) + ' GB',
-        used: usedDisk.toFixed(2) + ' GB',
-        percentage: ((usedDisk / totalDisk) * 100).toFixed(1) + '%'
+        total: totalDisk > 0 ? totalDisk.toFixed(2) + ' GB' : 'Unknown',
+        used: usedDisk > 0 ? usedDisk.toFixed(2) + ' GB' : 'Unknown',
+        percentage: totalDisk > 0 ? ((usedDisk / totalDisk) * 100).toFixed(1) + '%' : 'Unknown'
       },
       uptime: formatUptime(os.uptime()),
       shell: process.env.SHELL ? `${path.basename(process.env.SHELL)} ${shellVersion}` : 'Unknown',
@@ -425,8 +447,14 @@ async function displaySystemInfo() {
     info.battery.forEach(bat => {
       let batteryInfo = `${bat.capacity}`;
       if (bat.status) batteryInfo += ` (${bat.status})`;
-      if (bat.timeRemaining && bat.timeRemaining !== 'Desconhecido') {
+      if (bat.timeRemaining && bat.timeRemaining !== 'Unknown') {
         batteryInfo += ` - ${bat.timeRemaining}`;
+      }
+      if (bat.voltage && bat.voltage !== 'Unknown') {
+        batteryInfo += ` - ${bat.voltage}`;
+      }
+      if (bat.temperature && bat.temperature !== 'Unknown') {
+        batteryInfo += ` - ${bat.temperature}`;
       }
       infoLines.push(`${config.colors.labels(chalk.bold('Battery'))}: ${batteryInfo}`);
     });
