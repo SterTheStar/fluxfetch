@@ -338,11 +338,7 @@ async function displaySystemInfo() {
   
   // Adicionar informações com base nas configurações
   if (config.showInfo.distro) {
-    const username = process.env.USER || process.env.USERNAME || 'unknown';
-    const hostname = info.hostname;
-    const fullText = `${username}@${hostname}`;
-    infoLines.push(`${config.colors.labels(chalk.bold(username))}${chalk.white.bold('@')}${config.colors.labels(chalk.bold(hostname))}`);
-    infoLines.push(`${chalk.white('-'.repeat(fullText.length))}`);
+    infoLines.push(`${config.colors.labels(chalk.bold('Hostname'))}: ${info.hostname}`);
   }
   
   if (config.showInfo.os) {
@@ -386,44 +382,6 @@ async function displaySystemInfo() {
     }
   }
   
-  // Add battery information if available
-  if (info.battery && info.battery.length > 0) {
-    info.battery.forEach(bat => {
-      let batteryInfo = `${config.colors.labels(chalk.bold('Battery'))}: ${bat.capacity}`;
-      if (bat.status && bat.status !== 'Unknown') {
-        batteryInfo += ` (${bat.status})`;
-      }
-      if (bat.timeRemaining && bat.timeRemaining !== 'Unknown') {
-        batteryInfo += ` - ${bat.timeRemaining}`;
-      }
-      infoLines.push(batteryInfo);
-    });
-  } else if (isAndroid && info.androidInfo && info.androidInfo.battery) {
-    const bat = info.androidInfo.battery;
-    if (bat.capacity && bat.capacity !== 'Unknown') {
-      let batteryInfo = `${config.colors.labels(chalk.bold('Battery'))}: ${bat.capacity}`;
-      if (bat.status && bat.status !== 'Unknown') {
-        batteryInfo += ` (${bat.status})`;
-      }
-      if (bat.timeRemaining && bat.timeRemaining !== 'Unknown') {
-        batteryInfo += ` - ${bat.timeRemaining}`;
-      }
-      infoLines.push(batteryInfo);
-    }
-  } else if (info.battery) {
-    const bat = info.battery;
-    if (bat.capacity && bat.capacity !== 'Unknown') {
-      let batteryInfo = `${config.colors.labels(chalk.bold('Battery'))}: ${bat.capacity}`;
-      if (bat.status && bat.status !== 'Unknown') {
-        batteryInfo += ` (${bat.status})`;
-      }
-      if (bat.timeRemaining && bat.timeRemaining !== 'Unknown') {
-        batteryInfo += ` - ${bat.timeRemaining}`;
-      }
-      infoLines.push(batteryInfo);
-    }
-  }
-  
   if (config.showInfo.disk) {
     infoLines.push(`${config.colors.labels(chalk.bold('Disk'))}: ${info.disk.used} / ${info.disk.total} (${info.disk.percentage})`);
   }
@@ -460,7 +418,7 @@ async function displaySystemInfo() {
   if (info.theme && Object.keys(info.theme).length > 0) {
     Object.entries(info.theme).forEach(([key, value]) => {
       if (value && value !== 'Unknown') {
-        const label = key.toUpperCase();
+        const label = key.charAt(0).toUpperCase() + key.slice(1);
         infoLines.push(`${config.colors.labels(chalk.bold(label))}: ${value}`);
       }
     });
@@ -512,16 +470,14 @@ async function displaySystemInfo() {
   // Exibir cores se configurado
   if (config.display.showColorBlocks) {
     console.log('\n');
-    let colorLine1 = '';
-    let colorLine2 = '';
     for (let i = 0; i < 8; i++) {
-      colorLine1 += chalk.bgAnsi(i)('   ');
-      colorLine2 += chalk.bgAnsi(i + 8)('   ');
+      let colorLine = '';
+      for (let j = 0; j < 2; j++) {
+        const colorCode = j * 8 + i;
+        colorLine += chalk.bgAnsi(colorCode)('   ');
+      }
+      console.log(colorLine);
     }
-    // Adicionar espaços para alinhar com as informações
-    const padding = ' '.repeat(asciiWidth + 19);
-    console.log(padding + colorLine1);
-    console.log(padding + colorLine2);
   }
 }
 
