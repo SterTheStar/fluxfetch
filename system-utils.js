@@ -14,7 +14,8 @@ class SystemUtils {
         theme: await this.getThemeInfo(),
         locale: this.getLocaleInfo(),
         network: await this.getNetworkInfo(),
-        swap: await this.getSwapInfo()
+        swap: await this.getSwapInfo(),
+        battery: await this.getBatteryInfo()
       };
 
       return info;
@@ -666,6 +667,199 @@ class SystemUtils {
       return null;
     } catch (error) {
       console.error('Error getting swap information on Windows:', error);
+      return null;
+    }
+  }
+
+  static async getBatteryInfo() {
+    const platform = os.platform();
+    
+    try {
+      switch (platform) {
+        case 'linux':
+          return await this.getLinuxBatteryInfo();
+        case 'darwin':
+          return await this.getMacOSBatteryInfo();
+        case 'win32':
+          return await this.getWindowsBatteryInfo();
+        default:
+          return null;
+      }
+    } catch (error) {
+      console.error('Error getting battery information:', error);
+      return null;
+    }
+  }
+
+  static async getLinuxBatteryInfo() {
+    try {
+      const batteryPath = '/sys/class/power_supply/BAT0';
+      if (!fs.existsSync(batteryPath)) {
+        return null;
+      }
+
+      const batteryInfo = {
+        capacity: "Unknown",
+        status: "Unknown",
+        timeRemaining: "Unknown"
+      };
+
+      // Get capacity
+      try {
+        const capacity = fs.readFileSync(path.join(batteryPath, 'capacity'), 'utf8').trim();
+        batteryInfo.capacity = capacity + "%";
+      } catch (e) {
+        console.error('Error reading battery capacity:', e);
+      }
+
+      // Get status
+      try {
+        const status = fs.readFileSync(path.join(batteryPath, 'status'), 'utf8').trim();
+        switch (status.toLowerCase()) {
+          case 'discharging':
+            batteryInfo.status = "Discharging";
+            break;
+          case 'charging':
+            batteryInfo.status = "Charging";
+            break;
+          case 'not-charging':
+            batteryInfo.status = "Not charging";
+            break;
+          case 'full':
+            batteryInfo.status = "Full";
+            break;
+          default:
+            batteryInfo.status = status;
+        }
+      } catch (e) {
+        console.error('Error reading battery status:', e);
+      }
+
+      // Calculate remaining time
+      try {
+        const powerNow = fs.readFileSync(path.join(batteryPath, 'power_now'), 'utf8').trim();
+        const energyNow = fs.readFileSync(path.join(batteryPath, 'energy_now'), 'utf8').trim();
+        
+        if (powerNow && energyNow && batteryInfo.status === "Discharging") {
+          const power = parseInt(powerNow);
+          const energy = parseInt(energyNow);
+          if (power !== 0) {
+            const minutes = Math.floor((energy / power) * 60);
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            batteryInfo.timeRemaining = `${hours}h ${remainingMinutes}m`;
+          }
+        }
+      } catch (e) {
+        // Ignore error when calculating remaining time
+      }
+
+      return batteryInfo;
+    } catch (error) {
+      console.error('Error getting battery information on Linux:', error);
+      return null;
+    }
+  }
+
+  static async getMacOSBatteryInfo() {
+    try {
+      const output = execSync('pmset -g batt').toString();
+      const batteryInfo = {
+        capacity: "Unknown",
+        status: "Unknown",
+        timeRemaining: "Unknown"
+      };
+
+      const capacityMatch = output.match(/(\d+)%/);
+      const statusMatch = output.match(/; ([^;]+);/);
+      const timeMatch = output.match(/(\d+):(\d+) remaining/);
+
+      if (capacityMatch) {
+        batteryInfo.capacity = capacityMatch[1] + "%";
+      }
+
+      if (statusMatch) {
+        const status = statusMatch[1].toLowerCase();
+        switch (status) {
+          case 'discharging':
+            batteryInfo.status = "Discharging";
+            break;
+          case 'charging':
+            batteryInfo.status = "Charging";
+            break;
+          case 'not charging':
+            batteryInfo.status = "Not charging";
+            break;
+          case 'charged':
+            batteryInfo.status = "Full";
+            break;
+          default:
+            batteryInfo.status = status;
+        }
+      }
+
+      if (timeMatch) {
+        const hours = parseInt(timeMatch[1]);
+        const minutes = parseInt(timeMatch[2]);
+        batteryInfo.timeRemaining = `${hours}h ${minutes}m`;
+      }
+
+      return batteryInfo;
+    } catch (error) {
+      console.error('Error getting battery information on macOS:', error);
+      return null;
+    }
+  }
+
+  static async getWindowsBatteryInfo() {
+    try {
+      const output = execSync('wmic path Win32_Battery get EstimatedChargeRemaining, BatteryStatus').toString();
+      const batteryInfo = {
+        capacity: "Unknown",
+        status: "Unknown",
+        timeRemaining: "Unknown"
+      };
+
+      const lines = output.split('\n').filter(line => line.trim());
+      if (lines.length >= 2) {
+        const [capacity, status] = lines[1].trim().split(/\s+/);
+        
+        if (capacity) {
+          batteryInfo.capacity = capacity + "%";
+        }
+
+        if (status) {
+          switch (parseInt(status)) {
+            case 1:
+              batteryInfo.status = "Discharging";
+              break;
+            case 2:
+              batteryInfo.status = "Charging";
+              break;
+            case 3:
+              batteryInfo.status = "Full";
+              break;
+            case 4:
+              batteryInfo.status = "Low";
+              break;
+            case 5:
+              batteryInfo.status = "Critical";
+              break;
+            case 6:
+              batteryInfo.status = "Charging";
+              break;
+            case 7:
+              batteryInfo.status = "Not charging";
+              break;
+            default:
+              batteryInfo.status = "Unknown";
+          }
+        }
+      }
+
+      return batteryInfo;
+    } catch (error) {
+      console.error('Error getting battery information on Windows:', error);
       return null;
     }
   }

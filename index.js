@@ -386,18 +386,42 @@ async function displaySystemInfo() {
     }
   }
   
-  // Adicionar informações da bateria se disponíveis
+  // Add battery information if available
   if (info.battery && info.battery.length > 0) {
     info.battery.forEach(bat => {
       let batteryInfo = `${config.colors.labels(chalk.bold('Battery'))}: ${bat.capacity}`;
-      if (bat.status) {
+      if (bat.status && bat.status !== 'Unknown') {
         batteryInfo += ` (${bat.status})`;
       }
-      if (bat.timeRemaining && bat.timeRemaining !== 'Desconhecido') {
+      if (bat.timeRemaining && bat.timeRemaining !== 'Unknown') {
         batteryInfo += ` - ${bat.timeRemaining}`;
       }
       infoLines.push(batteryInfo);
     });
+  } else if (isAndroid && info.androidInfo && info.androidInfo.battery) {
+    const bat = info.androidInfo.battery;
+    if (bat.capacity && bat.capacity !== 'Unknown') {
+      let batteryInfo = `${config.colors.labels(chalk.bold('Battery'))}: ${bat.capacity}`;
+      if (bat.status && bat.status !== 'Unknown') {
+        batteryInfo += ` (${bat.status})`;
+      }
+      if (bat.timeRemaining && bat.timeRemaining !== 'Unknown') {
+        batteryInfo += ` - ${bat.timeRemaining}`;
+      }
+      infoLines.push(batteryInfo);
+    }
+  } else if (info.battery) {
+    const bat = info.battery;
+    if (bat.capacity && bat.capacity !== 'Unknown') {
+      let batteryInfo = `${config.colors.labels(chalk.bold('Battery'))}: ${bat.capacity}`;
+      if (bat.status && bat.status !== 'Unknown') {
+        batteryInfo += ` (${bat.status})`;
+      }
+      if (bat.timeRemaining && bat.timeRemaining !== 'Unknown') {
+        batteryInfo += ` - ${bat.timeRemaining}`;
+      }
+      infoLines.push(batteryInfo);
+    }
   }
   
   if (config.showInfo.disk) {

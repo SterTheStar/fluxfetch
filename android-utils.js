@@ -44,13 +44,71 @@ async function getAndroidInfo() {
     const buildId = await execCommand('getprop ro.build.id || echo "Desconhecido"');
     const buildFingerprint = await execCommand('getprop ro.build.fingerprint || echo "Desconhecido"');
     
-    // Informações de bateria (se disponível)
-    let batteryLevel = "Desconhecido";
+    // Battery information (if available)
+    let batteryInfo = {
+      capacity: "Unknown",
+      status: "Unknown",
+      timeRemaining: "Unknown"
+    };
+
     try {
-      batteryLevel = await execCommand('dumpsys battery | grep level | cut -d ":" -f2 || echo "Desconhecido"');
-      batteryLevel = batteryLevel.trim() + "%";
+      // Try to get battery information using system files
+      const batteryPath = '/sys/class/power_supply/battery';
+      
+      // Check if battery directory exists
+      if (fs.existsSync(batteryPath)) {
+        // Get battery level
+        try {
+          const capacity = fs.readFileSync(path.join(batteryPath, 'capacity'), 'utf8').trim();
+          batteryInfo.capacity = capacity + "%";
+        } catch (e) {
+          console.error('Error reading battery capacity:', e);
+        }
+        
+        // Get battery status
+        try {
+          const status = fs.readFileSync(path.join(batteryPath, 'status'), 'utf8').trim();
+          switch (status.toLowerCase()) {
+            case 'discharging':
+              batteryInfo.status = "Discharging";
+              break;
+            case 'charging':
+              batteryInfo.status = "Charging";
+              break;
+            case 'not-charging':
+              batteryInfo.status = "Not charging";
+              break;
+            case 'full':
+              batteryInfo.status = "Full";
+              break;
+            default:
+              batteryInfo.status = status;
+          }
+        } catch (e) {
+          console.error('Error reading battery status:', e);
+        }
+        
+        // Try to get remaining time
+        try {
+          const currentNow = fs.readFileSync(path.join(batteryPath, 'current_now'), 'utf8').trim();
+          const chargeNow = fs.readFileSync(path.join(batteryPath, 'charge_now'), 'utf8').trim();
+          
+          if (currentNow && chargeNow && batteryInfo.status === "Discharging") {
+            const current = parseInt(currentNow);
+            const charge = parseInt(chargeNow);
+            if (current !== 0) {
+              const minutes = Math.floor((charge / current) * 60);
+              const hours = Math.floor(minutes / 60);
+              const remainingMinutes = minutes % 60;
+              batteryInfo.timeRemaining = `${hours}h ${remainingMinutes}m`;
+            }
+          }
+        } catch (e) {
+          // Ignore error when calculating remaining time
+        }
+      }
     } catch (e) {
-      // Ignora erros ao obter informações da bateria
+      console.error('Error getting battery information:', e);
     }
     
     // Informações de rede
@@ -70,7 +128,7 @@ async function getAndroidInfo() {
       sdkVersion,
       buildId,
       buildFingerprint,
-      batteryLevel,
+      battery: batteryInfo,
       wifiInfo
     };
   } catch (error) {
@@ -85,7 +143,11 @@ async function getAndroidInfo() {
       sdkVersion: process.env.ANDROID_SDK_VERSION || 'Desconhecido',
       buildId: process.env.ANDROID_BUILD_ID || 'Desconhecido',
       buildFingerprint: 'Desconhecido',
-      batteryLevel: 'Desconhecido',
+      battery: {
+        capacity: 'Desconhecido',
+        status: 'Desconhecido',
+        timeRemaining: 'Desconhecido'
+      },
       wifiInfo: 'Desconhecido'
     };
   }
