@@ -425,17 +425,23 @@ class SystemUtils {
 
   static async getWindowsThemeInfo() {
     try {
-      const output = execSync('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize" /v AppsUseLightTheme').toString();
+      // Tentar obter o tema usando PowerShell com tratamento de erro
+      const output = execSync('powershell -Command "$ErrorActionPreference = \'SilentlyContinue\'; $theme = Get-ItemProperty -Path \'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\' -Name \'AppsUseLightTheme\' -ErrorAction SilentlyContinue; if ($theme) { $theme.AppsUseLightTheme } else { \'1\' }"').toString().trim();
+      
       const theme = {
         de: 'Windows',
         wm: 'DWM',
-        theme: output.includes('0x0') ? 'Dark' : 'Light'
+        theme: output === '0' ? 'Dark' : 'Light'
       };
       
       return theme;
     } catch (error) {
-      console.error('Error getting theme information on Windows:', error);
-      return null;
+      // Se falhar, retornar tema padrão
+      return {
+        de: 'Windows',
+        wm: 'DWM',
+        theme: 'Light'
+      };
     }
   }
 

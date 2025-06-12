@@ -168,6 +168,98 @@ function getTerminalPath() {
   return 'Unknown';
 }
 
+// Adicionar função para obter hostname no Windows
+function getWindowsHostname() {
+  try {
+    const output = execSync('hostname', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return output || 'unknown';
+  } catch (error) {
+    console.error('Erro ao obter hostname no Windows:', error);
+    return 'unknown';
+  }
+}
+
+// Função para obter informações do shell no Windows
+function getWindowsShellInfo() {
+  try {
+    // Tentar obter o shell atual via PowerShell
+    const output = execSync('powershell -Command "$env:ComSpec"').toString().trim();
+    const shellPath = output.toLowerCase();
+    
+    let shellName = 'Unknown';
+    let shellVersion = 'Unknown';
+    
+    if (shellPath.includes('cmd.exe')) {
+      shellName = 'cmd';
+      try {
+        const versionOutput = execSync('cmd /c ver').toString();
+        const versionMatch = versionOutput.match(/\[Version (\d+\.\d+\.\d+)\]/);
+        if (versionMatch) {
+          shellVersion = versionMatch[1];
+        }
+      } catch (error) {
+        // Ignorar erro silenciosamente
+      }
+    } else if (shellPath.includes('powershell.exe')) {
+      shellName = 'powershell';
+      try {
+        const versionOutput = execSync('powershell -Command "$PSVersionTable.PSVersion"').toString();
+        const versionMatch = versionOutput.match(/Major\s+:\s+(\d+)/);
+        if (versionMatch) {
+          shellVersion = versionMatch[1];
+        }
+      } catch (error) {
+        // Ignorar erro silenciosamente
+      }
+    }
+    
+    return `${shellName} ${shellVersion}`;
+  } catch (error) {
+    console.error('Erro ao obter informações do shell no Windows:', error);
+    return 'Unknown';
+  }
+}
+
+// Função para obter informações do terminal no Windows
+function getWindowsTerminalInfo() {
+  try {
+    // Verificar se está rodando no Windows Terminal
+    const wtProcess = execSync('powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle -like \'*Windows Terminal*\'}"').toString();
+    if (wtProcess) {
+      return 'Windows Terminal';
+    }
+    
+    // Verificar se está rodando no ConEmu
+    const conemuProcess = execSync('powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle -like \'*ConEmu*\'}"').toString();
+    if (conemuProcess) {
+      return 'ConEmu';
+    }
+    
+    // Verificar se está rodando no Cmder
+    const cmderProcess = execSync('powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle -like \'*Cmder*\'}"').toString();
+    if (cmderProcess) {
+      return 'Cmder';
+    }
+    
+    // Verificar se está rodando no PowerShell
+    const psProcess = execSync('powershell -Command "Get-Process | Where-Object {$_.ProcessName -eq \'powershell\'}"').toString();
+    if (psProcess) {
+      return 'PowerShell';
+    }
+    
+    // Verificar se está rodando no CMD
+    const cmdProcess = execSync('powershell -Command "Get-Process | Where-Object {$_.ProcessName -eq \'cmd\'}"').toString();
+    if (cmdProcess) {
+      return 'Command Prompt';
+    }
+    
+    return 'Windows Console';
+  } catch (error) {
+    console.error('Erro ao obter informações do terminal no Windows:', error);
+    return 'Unknown';
+  }
+}
+
 // Função para obter informações do sistema
 async function getSystemInfo() {
   try {
@@ -248,25 +340,34 @@ async function getSystemInfo() {
     
     // Obter versão do shell
     let shellVersion = 'Unknown';
-    try {
-      if (process.env.SHELL) {
-        const shellPath = process.env.SHELL;
-        const shellName = path.basename(shellPath);
-        const versionOutput = execSync(`${shellName} --version`).toString();
-        const versionMatch = versionOutput.match(/\d+\.\d+\.\d+/);
-        if (versionMatch) {
-          shellVersion = versionMatch[0];
+    let shellInfo = 'Unknown';
+    let terminalInfo = 'Unknown';
+    
+    if (process.platform === 'win32') {
+      shellInfo = getWindowsShellInfo();
+      terminalInfo = getWindowsTerminalInfo();
+    } else {
+      try {
+        if (process.env.SHELL) {
+          const shellPath = process.env.SHELL;
+          const shellName = path.basename(shellPath);
+          const versionOutput = execSync(`${shellName} --version`).toString();
+          const versionMatch = versionOutput.match(/\d+\.\d+\.\d+/);
+          if (versionMatch) {
+            shellVersion = versionMatch[0];
+          }
+          shellInfo = `${shellName} ${shellVersion}`;
         }
+      } catch (error) {
+        console.error('Erro ao obter versão do shell:', error);
       }
-    } catch (error) {
-      console.error('Erro ao obter versão do shell:', error);
     }
 
     // Obter informações da GPU
     const gpuInfo = await GpuUtils.getGpuInfo();
     
     return {
-      hostname: os.hostname(),
+      hostname: process.platform === 'win32' ? getWindowsHostname() : os.hostname(),
       platform: isAndroid ? 'Android' : os_info.platform,
       distro: isAndroid ? androidInfo.device : os_info.distro,
       release: isAndroid ? androidInfo.build : os_info.release,
@@ -289,9 +390,9 @@ async function getSystemInfo() {
         percentage: totalDisk > 0 ? ((usedDisk / totalDisk) * 100).toFixed(1) + '%' : 'Unknown'
       },
       uptime: formatUptime(os.uptime()),
-      shell: process.env.SHELL ? `${path.basename(process.env.SHELL)} ${shellVersion}` : 'Unknown',
-      terminal: process.env.TERM || process.env.TERMINAL || 'Unknown',
-      terminalPath: getTerminalPath(),
+      shell: shellInfo,
+      terminal: terminalInfo,
+      terminalPath: process.platform === 'win32' ? terminalInfo : getTerminalPath(),
       resolution: resolution,
       de: process.env.DESKTOP_SESSION || process.env.XDG_CURRENT_DESKTOP || 'Unknown',
       wm: process.env.WINDOWMANAGER || 'Unknown',
@@ -372,6 +473,15 @@ function getAsciiArt(system) {
   }
   
   return asciiLoader.getAsciiArt('unknown');
+}
+
+// Adicionar função para remover marcadores de cor e códigos ANSI
+function stripColorMarkersAndAnsi(str) {
+  // Remove marcadores $1, $2, $3, $4
+  let clean = str.replace(/\$[1-9]/g, '');
+  // Remove códigos ANSI
+  clean = clean.replace(/\u001b\[[0-9;]*m/g, '');
+  return clean;
 }
 
 // Exibir informações do sistema com arte ASCII
@@ -509,7 +619,7 @@ async function displaySystemInfo() {
   }
   
   // Calcular o comprimento máximo da arte ASCII
-  const asciiWidth = Math.max(...asciiArt.map(line => line.length));
+  const asciiWidth = Math.max(...asciiArt.map(line => stripColorMarkersAndAnsi(line).length));
   
   // Calcular o número de linhas vazias necessárias para centralizar
   const totalLines = Math.max(asciiArt.length, infoLines.length);
@@ -526,10 +636,11 @@ async function displaySystemInfo() {
       line += ' '.repeat(8);
       line += config.colors.ascii(asciiArt[i]);
       // Preencher com espaços para alinhar
-      line += ' '.repeat(asciiWidth - asciiArt[i].length + 8);
+      line += ' '.repeat(asciiWidth - stripColorMarkersAndAnsi(asciiArt[i]).length + 8);
     } else if (config.display.showAsciiArt) {
       // Se não houver mais linhas de arte ASCII, adicionar espaços
-      line += ' '.repeat(asciiWidth + 19);
+      // O padding deve ser igual ao espaço à esquerda + largura da arte + padding extra
+      line += ' '.repeat(8 + asciiWidth + 8); // 8 espaços à esquerda + largura da arte + padding extra
     }
     
     // Adicionar linha de informação se disponível

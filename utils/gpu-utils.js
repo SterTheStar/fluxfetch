@@ -203,7 +203,6 @@ class GpuUtils {
   static async getLinuxGpuInfo() {
     try {
       const gpuInfo = new Set();
-      let mainGpuInfo = null;
       let gpuClock = null;
       
       // Tentar obter informações via glxinfo primeiro (prioridade)
@@ -212,10 +211,12 @@ class GpuUtils {
         const rendererMatch = glxOutput.match(/OpenGL renderer string: (.*)/);
         if (rendererMatch) {
           const renderer = rendererMatch[1].trim();
-          // Extrair apenas o modelo principal (AMD Radeon RX XXX / XXX Series)
+          // Extrair apenas o modelo principal
           const modelMatch = renderer.match(/(AMD Radeon RX \d+ \/ \d+ Series)/);
           if (modelMatch) {
-            mainGpuInfo = modelMatch[1];
+            gpuInfo.add(modelMatch[1]);
+          } else {
+            gpuInfo.add(renderer);
           }
         }
       } catch (error) {
@@ -249,79 +250,90 @@ class GpuUtils {
         // Ignorar erro silenciosamente
       }
       
-      // Se não encontrou via glxinfo, tentar outras fontes
-      if (!mainGpuInfo) {
-        // Tentar obter informações via systeminformation
-        try {
-          const graphics = await si.graphics();
-          if (graphics.controllers && graphics.controllers.length > 0) {
-            for (const controller of graphics.controllers) {
-              if (controller.model) {
-                const modelMatch = controller.model.match(/(AMD Radeon RX \d+ \/ \d+ Series)/);
-                if (modelMatch) {
-                  mainGpuInfo = modelMatch[1];
-                  break;
-                }
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error getting GPU info via systeminformation:', error);
-        }
-      }
-      
-      // Se ainda não encontrou, tentar via lspci
-      if (!mainGpuInfo) {
-        try {
-          const lspciOutput = execSync('lspci -v 2>/dev/null | grep -i "vga\\|3d"').toString();
-          const gpuLines = lspciOutput.split('\n').filter(line => line.trim());
-          
-          for (const line of gpuLines) {
-            const match = line.match(/(?:VGA|3D).*:\s*(.*)/i);
-            if (match) {
-              const modelMatch = match[1].match(/(AMD Radeon RX \d+ \/ \d+ Series)/);
+      // Tentar obter informações via systeminformation
+      try {
+        const graphics = await si.graphics();
+        if (graphics.controllers && graphics.controllers.length > 0) {
+          for (const controller of graphics.controllers) {
+            if (controller.model) {
+              // Extrair apenas o modelo principal
+              const modelMatch = controller.model.match(/(AMD Radeon RX \d+ \/ \d+ Series)/);
               if (modelMatch) {
-                mainGpuInfo = modelMatch[1];
-                break;
+                gpuInfo.add(modelMatch[1]);
+              } else {
+                gpuInfo.add(controller.model);
               }
             }
           }
-        } catch (error) {
-          // Ignorar erro silenciosamente
         }
+      } catch (error) {
+        console.error('Error getting GPU info via systeminformation:', error);
       }
       
-      // Se ainda não encontrou, usar fallback genérico
-      if (!mainGpuInfo) {
-        try {
-          const drmDevices = fs.readdirSync('/sys/class/drm').filter(device => 
-            device.startsWith('card') && !device.includes('-')
-          );
-          
-          for (const device of drmDevices) {
-            try {
-              const devicePath = `/sys/class/drm/${device}/device/vendor`;
-              if (fs.existsSync(devicePath)) {
-                const vendor = fs.readFileSync(devicePath, 'utf8').trim();
-                if (vendor === '0x10de') {
-                  mainGpuInfo = 'NVIDIA GPU';
-                } else if (vendor === '0x1002') {
-                  mainGpuInfo = 'AMD GPU';
-                } else if (vendor === '0x8086') {
-                  mainGpuInfo = 'Intel GPU';
-                }
-                break;
-              }
-            } catch (error) {
-              // Ignorar erro silenciosamente
+      // Tentar via lspci
+      try {
+        const lspciOutput = execSync('lspci -v 2>/dev/null | grep -i "vga\\|3d"').toString();
+        const gpuLines = lspciOutput.split('\n').filter(line => line.trim());
+        
+        for (const line of gpuLines) {
+          const match = line.match(/(?:VGA|3D).*:\s*(.*)/i);
+          if (match) {
+            const gpuName = match[1].trim();
+            // Extrair apenas o modelo principal
+            const modelMatch = gpuName.match(/(AMD Radeon RX \d+ \/ \d+ Series)/);
+            if (modelMatch) {
+              gpuInfo.add(modelMatch[1]);
+            } else {
+              gpuInfo.add(gpuName);
             }
           }
-        } catch (error) {
-          // Ignorar erro silenciosamente
         }
+      } catch (error) {
+        // Ignorar erro silenciosamente
       }
       
-      return mainGpuInfo ? `${mainGpuInfo}${gpuClock ? ` @ ${gpuClock}` : ''}` : null;
+      // Tentar via /sys/class/drm
+      try {
+        const drmDevices = fs.readdirSync('/sys/class/drm').filter(device => 
+          device.startsWith('card') && !device.includes('-')
+        );
+        
+        for (const device of drmDevices) {
+          try {
+            const devicePath = `/sys/class/drm/${device}/device/vendor`;
+            if (fs.existsSync(devicePath)) {
+              const vendor = fs.readFileSync(devicePath, 'utf8').trim();
+              if (vendor === '0x10de') {
+                gpuInfo.add('NVIDIA GPU');
+              } else if (vendor === '0x1002') {
+                gpuInfo.add('AMD GPU');
+              } else if (vendor === '0x8086') {
+                gpuInfo.add('Intel GPU');
+              }
+            }
+          } catch (error) {
+            // Ignorar erro silenciosamente
+          }
+        }
+      } catch (error) {
+        // Ignorar erro silenciosamente
+      }
+      
+      // Converter Set para Array e remover duplicatas
+      const uniqueGpuInfo = [...gpuInfo];
+      
+      // Se tivermos múltiplas entradas, priorizar a mais específica
+      if (uniqueGpuInfo.length > 1) {
+        // Procurar por entradas que contêm "AMD Radeon RX"
+        const amdEntry = uniqueGpuInfo.find(entry => entry.includes('AMD Radeon RX'));
+        if (amdEntry) {
+          return amdEntry;
+        }
+        // Se não encontrar, retornar a primeira entrada
+        return uniqueGpuInfo[0];
+      }
+      
+      return uniqueGpuInfo.length > 0 ? uniqueGpuInfo[0] : null;
     } catch (error) {
       console.error('Error getting GPU information on Linux:', error);
       return null;
@@ -378,26 +390,22 @@ class GpuUtils {
       const gpuInfo = [];
       let gpuClock = null;
       
-      // Tentar obter informações via wmic
+      // Tentar obter informações via PowerShell
       try {
-        const output = execSync('wmic path win32_VideoController get name, currentclock').toString();
-        const gpuLines = output.split('\n').slice(1).filter(line => line.trim());
+        const output = execSync('powershell -Command "Get-WmiObject -Class Win32_VideoController | Select-Object Name,CurrentClockSpeed | ConvertTo-Json"').toString();
+        const gpus = JSON.parse(output);
+        const gpuArray = Array.isArray(gpus) ? gpus : [gpus];
         
-        for (const line of gpuLines) {
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 2) {
-            const gpuName = parts.slice(0, -1).join(' ');
-            const clock = parts[parts.length - 1];
-            if (gpuName) {
-              gpuInfo.push(gpuName);
-              if (clock && !isNaN(parseInt(clock))) {
-                gpuClock = `${clock} MHz`;
-              }
+        for (const gpu of gpuArray) {
+          if (gpu.Name) {
+            gpuInfo.push(gpu.Name);
+            if (gpu.CurrentClockSpeed && !isNaN(parseInt(gpu.CurrentClockSpeed))) {
+              gpuClock = `${gpu.CurrentClockSpeed} MHz`;
             }
           }
         }
       } catch (error) {
-        console.error('Error getting GPU info via wmic:', error);
+        console.error('Error getting GPU info via PowerShell:', error);
       }
       
       // Tentar obter informações via systeminformation
@@ -414,9 +422,9 @@ class GpuUtils {
         console.error('Error getting GPU info via systeminformation:', error);
       }
       
-      // Remover duplicatas e retornar
+      // Remover duplicatas e retornar todas as GPUs
       const uniqueGpuInfo = [...new Set(gpuInfo)];
-      return uniqueGpuInfo.length > 0 ? `${uniqueGpuInfo[0]}${gpuClock ? ` @ ${gpuClock}` : ''}` : null;
+      return uniqueGpuInfo.length > 0 ? uniqueGpuInfo.join(', ') : null;
     } catch (error) {
       console.error('Error getting GPU information on Windows:', error);
       return null;

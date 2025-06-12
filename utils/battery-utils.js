@@ -157,48 +157,55 @@ class BatteryUtils {
 
   static async getWindowsBatteryInfo() {
     try {
-      const output = execSync('wmic path Win32_Battery get EstimatedChargeRemaining,Status,EstimatedRunTime,DesignVoltage,Voltage /format:list').toString();
-      const lines = output.split('\n');
+      // Verificar se existe bateria usando PowerShell
+      const hasBattery = execSync('powershell -Command "Get-WmiObject -Class Win32_Battery | Select-Object -First 1"').toString().trim();
       
-      if (lines.length < 2) {
+      if (!hasBattery) {
+        return null;
+      }
+
+      const output = execSync('powershell -Command "Get-WmiObject -Class Win32_Battery | Select-Object EstimatedChargeRemaining,Status,EstimatedRunTime,DesignVoltage,Voltage | ConvertTo-Json -Compress"').toString();
+      
+      if (!output || output.trim() === '') {
+        return null;
+      }
+
+      const batteries = JSON.parse(output);
+      
+      if (!batteries || (Array.isArray(batteries) && batteries.length === 0)) {
         return null;
       }
       
       const batteryInfo = [];
-      let currentBattery = {};
+      const batteryArray = Array.isArray(batteries) ? batteries : [batteries];
       
-      for (const line of lines) {
-        if (line.includes('EstimatedChargeRemaining')) {
-          if (Object.keys(currentBattery).length > 0) {
-            batteryInfo.push(currentBattery);
-          }
-          currentBattery = {
-            name: `BAT${batteryInfo.length}`,
-            capacity: `${line.split('=')[1].trim()}%`
-          };
-        } else if (line.includes('Status')) {
-          currentBattery.status = line.split('=')[1].trim();
-        } else if (line.includes('EstimatedRunTime')) {
-          const minutes = parseInt(line.split('=')[1].trim());
+      for (const bat of batteryArray) {
+        const battery = {
+          name: `BAT${batteryInfo.length}`,
+          capacity: `${bat.EstimatedChargeRemaining || 0}%`,
+          status: bat.Status || 'Unknown',
+          timeRemaining: 'Unknown',
+          voltage: 'Unknown',
+          temperature: 'N/A'
+        };
+        
+        if (bat.EstimatedRunTime) {
+          const minutes = parseInt(bat.EstimatedRunTime);
           if (!isNaN(minutes)) {
             const hours = Math.floor(minutes / 60);
             const remainingMinutes = minutes % 60;
-            currentBattery.timeRemaining = `${hours}h ${remainingMinutes}m`;
-          } else {
-            currentBattery.timeRemaining = 'Unknown';
-          }
-        } else if (line.includes('Voltage')) {
-          const voltage = parseInt(line.split('=')[1].trim());
-          if (!isNaN(voltage)) {
-            currentBattery.voltage = `${(voltage / 1000).toFixed(2)}V`;
+            battery.timeRemaining = `${hours}h ${remainingMinutes}m`;
           }
         }
-      }
-      
-      currentBattery.temperature = 'N/A';
-      
-      if (Object.keys(currentBattery).length > 0) {
-        batteryInfo.push(currentBattery);
+        
+        if (bat.Voltage) {
+          const voltage = parseInt(bat.Voltage);
+          if (!isNaN(voltage)) {
+            battery.voltage = `${(voltage / 1000).toFixed(2)}V`;
+          }
+        }
+        
+        batteryInfo.push(battery);
       }
       
       return batteryInfo;

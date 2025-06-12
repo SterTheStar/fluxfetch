@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const chalk = require('chalk');
 
 class AsciiLoader {
   constructor() {
@@ -67,7 +68,28 @@ class AsciiLoader {
     return 'unknown.txt';
   }
 
-  // Obter arte ASCII para um sistema
+  // Função para processar a arte ASCII e substituir marcadores de cor
+  processAsciiArt(lines, colorMap) {
+    return lines.map(line => {
+      // Expressão regular para encontrar $1, $2, $3, $4
+      let result = '';
+      let regex = /(\$[1-4])/g;
+      let parts = line.split(regex);
+      let currentColor = null;
+      parts.forEach(part => {
+        if (colorMap[part]) {
+          currentColor = colorMap[part];
+        } else if (currentColor) {
+          result += currentColor(part);
+        } else {
+          result += part;
+        }
+      });
+      return result;
+    });
+  }
+
+  // Modificar o método getAsciiArt para usar processAsciiArt
   getAsciiArt(system) {
     try {
       const filename = this.getAsciiArtFilename(system);
@@ -77,7 +99,15 @@ class AsciiLoader {
 
       const filePath = path.join(__dirname, '../ascii', filename);
       const content = fs.readFileSync(filePath, 'utf8');
-      return content.split('\n');
+      const lines = content.split('\n');
+      // Atualizar o mapeamento de cores para cores mais adequadas
+      const colorMap = {
+        '$1': chalk.cyan,
+        '$2': chalk.magenta,
+        '$3': chalk.green,
+        '$4': chalk.yellow
+      };
+      return this.processAsciiArt(lines, colorMap);
     } catch (error) {
       console.error(`Error loading ASCII art:`, error);
       return this.getAsciiArt('unknown');
